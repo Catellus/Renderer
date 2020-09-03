@@ -32,7 +32,7 @@ private:
 public:
 	~Application()
 	{
-		std::cout << "Destroying\n";
+		device->~VulkanDevice();
 		vkDestroySurfaceKHR(instance, surface, nullptr);
 		vkDestroyInstance(instance, nullptr);
 		glfwDestroyWindow(window);
@@ -95,7 +95,15 @@ public:
 
 		uint32_t selectedDevice = 0;
 
+		// Select device
+		//for (selectedDevice; selectedDevice < deviceCount; selectedDevice++)
+		//{
+		//}
+
 		device = new VulkanDevice(instance, devices[selectedDevice]);
+		device->queueFamilyIndices.graphics = device->FindQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT);
+		device->queueFamilyIndices.transfer = device->FindQueueFamilyIndex(VK_QUEUE_TRANSFER_BIT);
+		device->CreateLogicalDevice();
 	}
 
 };
