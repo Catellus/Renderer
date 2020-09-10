@@ -30,6 +30,7 @@ struct VulkanDevice
 		vkGetPhysicalDeviceProperties(physicalDevice, &properties);
 		vkGetPhysicalDeviceFeatures(physicalDevice, &features);
 		enabledFeatures = {};
+		std::cout << properties.deviceName << std::endl;
 
 		uint32_t queuesCount;
 		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queuesCount, nullptr);
