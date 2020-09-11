@@ -2,6 +2,7 @@
 #include <vector>
 #include <set>
 #include <string>
+#include <algorithm>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -22,6 +23,7 @@ private:
 	const char* title = "Window Title";
 	GLFWwindow* window;
 	VkSurfaceKHR surface;
+	VkSwapchainKHR swapchain;
 
 	struct SurfaceProperties
 	{
@@ -46,7 +48,8 @@ private:
 public:
 	~Application()
 	{
-		device->~VulkanDevice();
+		vkDestroySwapchainKHR(device->logicalDevice, swapchain, nullptr);
+		device->Cleanup();
 		vkDestroySurfaceKHR(instance, surface, nullptr);
 		vkDestroyInstance(instance, nullptr);
 		glfwDestroyWindow(window);
@@ -112,6 +115,7 @@ public:
 		device = new VulkanDevice(instance, devices[selectedDevice]);
 		device->queueFamilyIndices.graphics = device->FindQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT);
 		device->queueFamilyIndices.transfer = device->FindQueueFamilyIndex(VK_QUEUE_TRANSFER_BIT);
+		device->queueFamilyIndices.present = GetPresentFamilyIndex(device->queueProperties, device->physicalDevice);
 		device->enabledExtensions = deviceExtensions;
 		device->CreateLogicalDevice();
 	}
@@ -127,6 +131,7 @@ public:
 
 		int graphics = -1;
 		int transfer = -1;
+		int present  = -1;
 
 		uint32_t i = 0;
 
@@ -151,8 +156,9 @@ public:
 
 			graphics = GetQueueFamilyIndex(qProps, VK_QUEUE_GRAPHICS_BIT);
 			transfer = GetQueueFamilyIndex(qProps, VK_QUEUE_TRANSFER_BIT);
+			present = GetPresentFamilyIndex(qProps, d);
 
-			if (requiredExtensions.empty() && graphics >= 0 && transfer >= 0 && GetSurfaceProperties(d).isSuitable())
+			if (requiredExtensions.empty() && graphics >= 0 && transfer >= 0 && present >= 0 && GetSurfaceProperties(d).isSuitable())
 				return i;
 
 			i++;
@@ -160,6 +166,23 @@ public:
 
 		throw std::runtime_error("Failed to find a suitable physical device");
 		return 0;
+	}
+
+	int GetPresentFamilyIndex(std::vector<VkQueueFamilyProperties> qProps, VkPhysicalDevice d)
+	{
+		uint32_t tmpQueueProp = 0;
+		for (const auto& queueProp : qProps)
+		{
+			VkBool32 support = VK_FALSE;
+			vkGetPhysicalDeviceSurfaceSupportKHR(d, tmpQueueProp, surface, &support);
+			if (support == VK_TRUE)
+			{
+				return tmpQueueProp;
+			}
+			tmpQueueProp++;
+		}
+
+		return -1;
 	}
 
 	SurfaceProperties GetSurfaceProperties(VkPhysicalDevice _device)
@@ -213,27 +236,54 @@ public:
 
 	void CreateSwapchain()
 	{
-		//VkSurfaceFormatKHR format = ChooseSurfaceFormat();
+		SurfaceProperties properties = GetSurfaceProperties(device->physicalDevice);
+		VkSurfaceFormatKHR format = ChooseSurfaceFormat(properties.formats);
+		VkPresentModeKHR presentMode = ChoosePresentMode(properties.presentModes);
+		VkExtent2D extent = ChooseSwapchainExtent(properties.capabilities);
+		uint32_t imageCount = properties.capabilities.minImageCount + 1;
+		if (properties.capabilities.maxImageCount > 0 && imageCount > properties.capabilities.maxImageCount)
+		{
+			imageCount = properties.capabilities.maxImageCount;
+		}
 
-		//VkSwapchainCreateInfoKHR createInfo = {};
-		//createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-		//createInfo.surface = surface;
-		//createInfo.clipped = VK_TRUE;
-		//createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-		//createInfo.imageArrayLayers = 1;
-		//createInfo.queueFamilyIndexCount = 1;
-		//createInfo.pQueueFamilyIndices = &device->queueFamilyIndices.graphics;
-		//createInfo.imageFormat = format.format;
-		//createInfo.imageColorSpace = format.colorSpace;
+		VkSwapchainCreateInfoKHR createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+		createInfo.imageFormat = format.format;
+		createInfo.imageColorSpace = format.colorSpace;
+		createInfo.presentMode = presentMode;
+		createInfo.imageExtent = extent;
+		createInfo.preTransform = properties.capabilities.currentTransform;
+		createInfo.minImageCount = imageCount;
+		createInfo.surface = surface;
+		createInfo.clipped = VK_TRUE;
+		createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+		createInfo.imageArrayLayers = 1;
+		createInfo.oldSwapchain = VK_NULL_HANDLE;
+
+		if (device->queueFamilyIndices.graphics == device->queueFamilyIndices.present)
+		{
+			createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		}
+		else
+		{
+			uint32_t sharingIndices[] = {device->queueFamilyIndices.graphics, device->queueFamilyIndices.present};
+
+			createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+			createInfo.queueFamilyIndexCount = 2;
+			createInfo.pQueueFamilyIndices = sharingIndices;
+		}
+
+		if (vkCreateSwapchainKHR(device->logicalDevice, &createInfo, nullptr, &swapchain) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create swapchain");
+		}
+
+		std::cout << "Swapchain success\n";
 	}
 
-	VkSurfaceFormatKHR ChooseSurfaceFormat()
+	VkSurfaceFormatKHR ChooseSurfaceFormat(std::vector<VkSurfaceFormatKHR> formats)
 	{
-		uint32_t formatCount;
-		vkGetPhysicalDeviceSurfaceFormatsKHR(device->physicalDevice, surface, &formatCount, nullptr);
-		std::vector<VkSurfaceFormatKHR> formats(formatCount);
-		vkGetPhysicalDeviceSurfaceFormatsKHR(device->physicalDevice, surface, &formatCount, formats.data());
-
 		for (const auto& f : formats)
 		{
 			if (f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR && f.format == VK_FORMAT_B8G8R8A8_SRGB)
@@ -241,7 +291,46 @@ public:
 				return f;
 			}
 		}
-		throw std::runtime_error("Failed to find a suitable surface format");
+
+		return formats[0];
+	}
+
+	VkPresentModeKHR ChoosePresentMode(std::vector<VkPresentModeKHR> modes)
+	{
+		for (const auto& m : modes)
+		{
+			if (m == VK_PRESENT_MODE_MAILBOX_KHR)
+			{
+				return m;
+			}
+		}
+
+		return VK_PRESENT_MODE_FIFO_KHR;
+	}
+
+	VkExtent2D ChooseSwapchainExtent(VkSurfaceCapabilitiesKHR capabilities)
+	{
+		if (capabilities.currentExtent.width != UINT32_MAX)
+		{
+			return capabilities.currentExtent;
+		}
+		else
+		{
+			VkExtent2D actual = {width, height};
+			actual.width = clamp(actual.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+			actual.height = clamp(actual.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+
+			return actual;
+		}
+	}
+
+	uint32_t clamp(uint32_t _val, uint32_t _min, uint32_t _max)
+	{
+		if (_val < _min)
+			return _min;
+		if (_val > _max)
+			return _max;
+		return _val;
 	}
 
 };
@@ -257,6 +346,8 @@ int main()
 		app.CreateSurface();
 
 		app.CreateVulkanDevice();
+		app.CreateSwapchain();
+
 	}
 	catch (std::exception& e)
 	{

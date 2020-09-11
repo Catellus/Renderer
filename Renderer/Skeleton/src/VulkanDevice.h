@@ -19,9 +19,11 @@ struct VulkanDevice
 	struct {
 		uint32_t graphics;
 		uint32_t transfer;
+		uint32_t present;
 	} queueFamilyIndices;
 	VkQueue graphicsQueue;
 	VkQueue transferQueue;
+	VkQueue presentQueue;
 
 // ===== Functions =====
 	VulkanDevice(VkInstance _instance, VkPhysicalDevice _device)
@@ -43,7 +45,7 @@ struct VulkanDevice
 		vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionPropertyCount, extensionProperties.data());
 	}
 
-	~VulkanDevice()
+	void Cleanup()
 	{
 		if (logicalDevice)
 		{
@@ -91,9 +93,9 @@ struct VulkanDevice
 
 		uint32_t i = 0;
 		const float priority = 1.0f;
-		const uint32_t queueIndices[] = {queueFamilyIndices.graphics, queueFamilyIndices.transfer};
-		std::printf("%d, %d\n", queueFamilyIndices.graphics, queueFamilyIndices.transfer);
-		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos(2);
+		const uint32_t queueIndices[] = {queueFamilyIndices.graphics, queueFamilyIndices.transfer, queueFamilyIndices.present};
+		std::printf("%d, %d, %d\n", queueFamilyIndices.graphics, queueFamilyIndices.transfer, queueFamilyIndices.present);
+		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos(3);
 		for (auto& ci : queueCreateInfos)
 		{
 			ci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -109,6 +111,7 @@ struct VulkanDevice
 
 		vkGetDeviceQueue(logicalDevice, queueFamilyIndices.graphics, 0, &graphicsQueue);
 		vkGetDeviceQueue(logicalDevice, queueFamilyIndices.transfer, 0, &transferQueue);
+		vkGetDeviceQueue(logicalDevice, queueFamilyIndices.present , 0, &presentQueue);
 	}
 };
 
