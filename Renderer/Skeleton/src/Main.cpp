@@ -2,7 +2,6 @@
 #include <vector>
 #include <set>
 #include <string>
-#include <algorithm>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -13,6 +12,26 @@
 class Application
 {
 private:
+// ===== Predefined =====
+	struct SurfaceProperties
+	{
+		VkSurfaceCapabilitiesKHR capabilities;
+		std::vector<VkSurfaceFormatKHR> formats;
+		std::vector<VkPresentModeKHR> presentModes;
+
+		bool isSuitable()
+		{
+			return formats.size() && presentModes.size();
+		}
+	};
+
+	std::vector<const char*> instanceLayers = { "VK_LAYER_KHRONOS_validation" };
+	std::vector<const char*> instanceExtensions = {};
+	std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+	const char** glfwRequiredExtentions;
+	uint32_t glfwRequiredExtentionsCount;
+
+// ===== App/Window Info =====
 	const char* appTitle = "TestApp";
 	const uint32_t appVersion = VK_MAKE_VERSION(0, 0, 0);
 	const char* engineTitle = "TestEngine";
@@ -22,31 +41,40 @@ private:
 	uint32_t height = 600;
 	const char* title = "Window Title";
 	GLFWwindow* window;
+
+// ===== Vulkan Members =====
+	VkInstance instance;
+	VulkanDevice* device;
 	VkSurfaceKHR surface;
 	VkSwapchainKHR swapchain;
 
-	struct SurfaceProperties
-	{
-		VkSurfaceCapabilitiesKHR capabilities;
-		std::vector<VkSurfaceFormatKHR> formats;
-		std::vector<VkPresentModeKHR> presentModes;
-		bool isSuitable()
-		{
-			return formats.size() && presentModes.size();
-		}
-	};
-
-	std::vector<const char*> instanceLayers = {"VK_LAYER_KHRONOS_validation"};
-	std::vector<const char*> instanceExtensions = {};
-	std::vector<const char*> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-	const char** glfwRequiredExtentions;
-	uint32_t glfwRequiredExtentionsCount;
-	VkInstance instance;
-	VulkanDevice* device;
-
-
+// ====================================
 public:
-	~Application()
+	void Run()
+	{
+		Initialize();
+		MainLoop();
+		Cleanup();
+	}
+
+	void Initialize()
+	{
+		CreateWindow();
+		CreateInstance();
+		CreateSurface();
+		CreateVulkanDevice();
+		CreateSwapchain();
+	}
+
+	void MainLoop()
+	{
+		while (!glfwWindowShouldClose(window))
+		{
+			glfwPollEvents();
+		}
+	}
+
+	void Cleanup()
 	{
 		vkDestroySwapchainKHR(device->logicalDevice, swapchain, nullptr);
 		device->Cleanup();
@@ -54,6 +82,10 @@ public:
 		vkDestroyInstance(instance, nullptr);
 		glfwDestroyWindow(window);
 	}
+
+// ====================================
+// INITIALIZATION
+// ====================================
 
 	void CreateWindow()
 	{
@@ -122,8 +154,6 @@ public:
 
 	uint32_t ChooseSuitableDevice(std::vector<VkPhysicalDevice> _devices)
 	{
-		//VkPhysicalDeviceProperties properties;
-		//VkPhysicalDeviceFeatures features;
 		uint32_t supportedExtensionsCount;
 		std::vector<VkExtensionProperties> supportedExtensions;
 		uint32_t qPropCount;
@@ -137,9 +167,6 @@ public:
 
 		for (const auto& d : _devices)
 		{
-			//vkGetPhysicalDeviceProperties(d, &properties);
-			//vkGetPhysicalDeviceFeatures(d, &features);
-
 			std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
 			vkEnumerateDeviceExtensionProperties(d, nullptr, &supportedExtensionsCount, nullptr);
 			supportedExtensions.resize(supportedExtensionsCount);
@@ -166,6 +193,36 @@ public:
 
 		throw std::runtime_error("Failed to find a suitable physical device");
 		return 0;
+	}
+
+	uint32_t GetQueueFamilyIndex(std::vector<VkQueueFamilyProperties> _families, VkQueueFlags _flag)
+	{
+		uint32_t bestFit = -1;
+		for (uint32_t i = 0; i < (uint32_t)_families.size(); i++)
+		{
+			if (_flag & _families[i].queueFlags)
+			{
+				if (_flag == VK_QUEUE_TRANSFER_BIT)
+				{
+					if ((_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0)
+					{
+						return i;
+					}
+					else
+					{
+						bestFit = i;
+					}
+				}
+				else
+				{
+					return i;
+				}
+			}
+		}
+
+		if (bestFit == -1)
+			throw std::runtime_error("Failed to find a queue index");
+		return bestFit;
 	}
 
 	int GetPresentFamilyIndex(std::vector<VkQueueFamilyProperties> qProps, VkPhysicalDevice d)
@@ -204,42 +261,14 @@ public:
 		return properties;
 	}
 
-	uint32_t GetQueueFamilyIndex(std::vector<VkQueueFamilyProperties> _families, VkQueueFlags _flag)
-	{
-		uint32_t bestFit = -1;
-		for (uint32_t i = 0; i < (uint32_t)_families.size(); i++)
-		{
-			if (_flag & _families[i].queueFlags)
-			{
-				if (_flag == VK_QUEUE_TRANSFER_BIT)
-				{
-					if ((_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0)
-					{
-						return i;
-					}
-					else
-					{
-						bestFit = i;
-					}
-				}
-				else
-				{
-					return i;
-				}
-			}
-		}
-
-		if (bestFit == -1)
-			throw std::runtime_error("Failed to find a queue index");
-		return bestFit;
-	}
-
 	void CreateSwapchain()
 	{
 		SurfaceProperties properties = GetSurfaceProperties(device->physicalDevice);
-		VkSurfaceFormatKHR format = ChooseSurfaceFormat(properties.formats);
-		VkPresentModeKHR presentMode = ChoosePresentMode(properties.presentModes);
-		VkExtent2D extent = ChooseSwapchainExtent(properties.capabilities);
+		VkSurfaceFormatKHR format;
+		VkPresentModeKHR presentMode;
+		VkExtent2D extent;
+		GetIdealSurfaceProperties(properties, format, presentMode, extent);
+
 		uint32_t imageCount = properties.capabilities.minImageCount + 1;
 		if (properties.capabilities.maxImageCount > 0 && imageCount > properties.capabilities.maxImageCount)
 		{
@@ -282,45 +311,38 @@ public:
 		std::cout << "Swapchain success\n";
 	}
 
-	VkSurfaceFormatKHR ChooseSurfaceFormat(std::vector<VkSurfaceFormatKHR> formats)
+	void GetIdealSurfaceProperties(SurfaceProperties _properties, VkSurfaceFormatKHR& _format, VkPresentModeKHR& _presentMode, VkExtent2D& _extent)
 	{
-		for (const auto& f : formats)
+		_format = _properties.formats[0];
+		for (const auto& f : _properties.formats)
 		{
 			if (f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR && f.format == VK_FORMAT_B8G8R8A8_SRGB)
 			{
-				return f;
+				_format = f;
+				break;
 			}
 		}
 
-		return formats[0];
-	}
-
-	VkPresentModeKHR ChoosePresentMode(std::vector<VkPresentModeKHR> modes)
-	{
-		for (const auto& m : modes)
+		_presentMode = VK_PRESENT_MODE_FIFO_KHR;
+		for (const auto& m : _properties.presentModes)
 		{
 			if (m == VK_PRESENT_MODE_MAILBOX_KHR)
 			{
-				return m;
+				_presentMode = m;
+				break;
 			}
 		}
 
-		return VK_PRESENT_MODE_FIFO_KHR;
-	}
-
-	VkExtent2D ChooseSwapchainExtent(VkSurfaceCapabilitiesKHR capabilities)
-	{
-		if (capabilities.currentExtent.width != UINT32_MAX)
+		if (_properties.capabilities.currentExtent.width != UINT32_MAX)
 		{
-			return capabilities.currentExtent;
+			_extent = _properties.capabilities.currentExtent;
 		}
 		else
 		{
-			VkExtent2D actual = {width, height};
-			actual.width = clamp(actual.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-			actual.height = clamp(actual.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
-
-			return actual;
+			VkExtent2D actual = { width, height };
+			actual.width = clamp(actual.width, _properties.capabilities.minImageExtent.width, _properties.capabilities.maxImageExtent.width);
+			actual.height = clamp(actual.height, _properties.capabilities.minImageExtent.height, _properties.capabilities.maxImageExtent.height);
+			_extent = actual;
 		}
 	}
 
@@ -340,14 +362,7 @@ int main()
 	try
 	{
 		Application app;
-
-		app.CreateWindow();
-		app.CreateInstance();
-		app.CreateSurface();
-
-		app.CreateVulkanDevice();
-		app.CreateSwapchain();
-
+		app.Run();
 	}
 	catch (std::exception& e)
 	{

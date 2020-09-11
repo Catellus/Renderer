@@ -53,9 +53,9 @@ struct VulkanDevice
 		}
 	}
 
-	uint32_t FindQueueFamilyIndex(VkQueueFlagBits _flag)
+	int FindQueueFamilyIndex(VkQueueFlagBits _flag)
 	{
-		uint32_t bestFit = -1;
+		int bestFit = -1;
 		for (uint32_t i = 0; i < (uint32_t)queueProperties.size(); i++)
 		{
 			if (_flag & queueProperties[i].queueFlags)
