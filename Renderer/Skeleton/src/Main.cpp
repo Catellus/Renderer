@@ -47,6 +47,8 @@ private:
 	VulkanDevice* device;
 	VkSurfaceKHR surface;
 	VkSwapchainKHR swapchain;
+	std::vector<VkImage> swapchainImages;
+	std::vector<VkImageView> swapchainImageViews;
 
 // ====================================
 public:
@@ -76,6 +78,12 @@ public:
 
 	void Cleanup()
 	{
+		for (const auto& v : swapchainImageViews)
+			vkDestroyImageView(device->logicalDevice, v, nullptr);
+		swapchainImageViews.clear();
+		//for (const auto& i : swapchainImages)
+		//	vkDestroyImage(device->logicalDevice, i, nullptr);
+		swapchainImages.clear();
 		vkDestroySwapchainKHR(device->logicalDevice, swapchain, nullptr);
 		device->Cleanup();
 		vkDestroySurfaceKHR(instance, surface, nullptr);
@@ -309,6 +317,37 @@ public:
 		}
 
 		std::cout << "Swapchain success\n";
+
+
+		vkGetSwapchainImagesKHR(device->logicalDevice, swapchain, &imageCount, nullptr);
+		swapchainImages.resize(imageCount);
+		swapchainImageViews.resize(imageCount);
+		vkGetSwapchainImagesKHR(device->logicalDevice, swapchain, &imageCount, swapchainImages.data());
+
+		std::cout << "Retrieved Swapchain Images\n";
+
+		for (uint32_t i = 0; i < imageCount; i++)
+		{
+			VkImageViewCreateInfo viewCreateInfo = {};
+			viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+			viewCreateInfo.image = swapchainImages[i];
+			viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+			viewCreateInfo.format = format.format;
+			viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+			viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+			viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+			viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+			viewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			viewCreateInfo.subresourceRange.layerCount     = 1;
+			viewCreateInfo.subresourceRange.baseArrayLayer = 0;
+			viewCreateInfo.subresourceRange.levelCount   = 1;
+			viewCreateInfo.subresourceRange.baseMipLevel = 0;
+
+			if (vkCreateImageView(device->logicalDevice, &viewCreateInfo, nullptr, &swapchainImageViews[i]) != VK_SUCCESS)
+				throw std::runtime_error("Failed to create swapchain image view");
+		}
+		std::cout << "Ccreated Swapchain Image Views\n";
+
 	}
 
 	void GetIdealSurfaceProperties(SurfaceProperties _properties, VkSurfaceFormatKHR& _format, VkPresentModeKHR& _presentMode, VkExtent2D& _extent)
