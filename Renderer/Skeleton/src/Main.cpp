@@ -2,6 +2,7 @@
 #include <vector>
 #include <set>
 #include <string>
+#include <fstream>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -50,6 +51,10 @@ private:
 	std::vector<VkImage> swapchainImages;
 	std::vector<VkImageView> swapchainImageViews;
 
+// ===== Shaders =====
+	VkShaderModule vertShaderModule;
+	VkShaderModule fragShaderModule;
+
 // ====================================
 public:
 	void Run()
@@ -66,6 +71,7 @@ public:
 		CreateSurface();
 		CreateVulkanDevice();
 		CreateSwapchain();
+		CreateShaderModules();
 	}
 
 	void MainLoop()
@@ -78,16 +84,21 @@ public:
 
 	void Cleanup()
 	{
+		vkDestroyShaderModule(device->logicalDevice, vertShaderModule, nullptr);
+		vkDestroyShaderModule(device->logicalDevice, fragShaderModule, nullptr);
+
 		for (const auto& v : swapchainImageViews)
 			vkDestroyImageView(device->logicalDevice, v, nullptr);
 		swapchainImageViews.clear();
-		//for (const auto& i : swapchainImages)
-		//	vkDestroyImage(device->logicalDevice, i, nullptr);
 		swapchainImages.clear();
+
 		vkDestroySwapchainKHR(device->logicalDevice, swapchain, nullptr);
+
 		device->Cleanup();
+
 		vkDestroySurfaceKHR(instance, surface, nullptr);
 		vkDestroyInstance(instance, nullptr);
+
 		glfwDestroyWindow(window);
 	}
 
@@ -316,15 +327,10 @@ public:
 			throw std::runtime_error("Failed to create swapchain");
 		}
 
-		std::cout << "Swapchain success\n";
-
-
 		vkGetSwapchainImagesKHR(device->logicalDevice, swapchain, &imageCount, nullptr);
 		swapchainImages.resize(imageCount);
 		swapchainImageViews.resize(imageCount);
 		vkGetSwapchainImagesKHR(device->logicalDevice, swapchain, &imageCount, swapchainImages.data());
-
-		std::cout << "Retrieved Swapchain Images\n";
 
 		for (uint32_t i = 0; i < imageCount; i++)
 		{
@@ -346,8 +352,6 @@ public:
 			if (vkCreateImageView(device->logicalDevice, &viewCreateInfo, nullptr, &swapchainImageViews[i]) != VK_SUCCESS)
 				throw std::runtime_error("Failed to create swapchain image view");
 		}
-		std::cout << "Ccreated Swapchain Image Views\n";
-
 	}
 
 	void GetIdealSurfaceProperties(SurfaceProperties _properties, VkSurfaceFormatKHR& _format, VkPresentModeKHR& _presentMode, VkExtent2D& _extent)
@@ -392,6 +396,46 @@ public:
 		if (_val > _max)
 			return _max;
 		return _val;
+	}
+
+	void CreateShaderModules()
+	{
+		std::vector<char> vertFile = LoadFile("C:\\dev\\Renderer_REPO\\Renderer\\Skeleton\\res\\vert.spv");
+		std::vector<char> fragFile = LoadFile("C:\\dev\\Renderer_REPO\\Renderer\\Skeleton\\res\\frag.spv");
+
+		vertShaderModule = CreateShaderModule(vertFile);
+		fragShaderModule = CreateShaderModule(fragFile);
+	}
+
+	VkShaderModule CreateShaderModule(const std::vector<char> _code)
+	{
+		VkShaderModuleCreateInfo createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+		createInfo.codeSize = (uint32_t)_code.size();
+		createInfo.pCode = reinterpret_cast<const uint32_t*>(_code.data());
+
+		VkShaderModule tmpShaderModule;
+		if (vkCreateShaderModule(device->logicalDevice, &createInfo, nullptr, &tmpShaderModule) != VK_SUCCESS)
+			throw std::runtime_error("Failed to create shader module");
+
+		return tmpShaderModule;
+	}
+
+	std::vector<char> LoadFile(const char* _directory)
+	{
+		std::ifstream stream;
+		stream.open(_directory, std::ios::ate | std::ios::binary);
+		if (!stream.is_open())
+			throw std::runtime_error("Failed to open shader directory");
+
+		uint32_t size = (uint32_t) stream.tellg();
+		stream.seekg(0);
+
+		std::vector<char> bytes(size);
+		stream.read(bytes.data(), size);
+
+		stream.close();
+		return bytes;
 	}
 
 };
