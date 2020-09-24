@@ -28,4 +28,7 @@
     <None Include="res\default.frag" />
     <None Include="res\default.vert" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="NOTES.txt" />
+  </ItemGroup>
 </Project>

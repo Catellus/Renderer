@@ -71,7 +71,7 @@ public:
 		CreateSurface();
 		CreateVulkanDevice();
 		CreateSwapchain();
-		CreateShaderModules();
+		CreateGraphicsPipeline();
 	}
 
 	void MainLoop()
@@ -398,13 +398,97 @@ public:
 		return _val;
 	}
 
-	void CreateShaderModules()
+	void CreateGraphicsPipeline()
 	{
-		std::vector<char> vertFile = LoadFile("C:\\dev\\Renderer_REPO\\Renderer\\Skeleton\\res\\vert.spv");
-		std::vector<char> fragFile = LoadFile("C:\\dev\\Renderer_REPO\\Renderer\\Skeleton\\res\\frag.spv");
+        VkGraphicsPipelineCreateInfo pipelineCreateInfo = {};
+        pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 
-		vertShaderModule = CreateShaderModule(vertFile);
-		fragShaderModule = CreateShaderModule(fragFile);
+	// ===== Shader Stage =====
+        std::vector<char> vertFile = LoadFile("C:\\dev\\Renderer_REPO\\Renderer\\Skeleton\\res\\vert.spv");
+        std::vector<char> fragFile = LoadFile("C:\\dev\\Renderer_REPO\\Renderer\\Skeleton\\res\\frag.spv");
+        vertShaderModule = CreateShaderModule(vertFile);
+        fragShaderModule = CreateShaderModule(fragFile);
+
+		VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
+		vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+		vertShaderStageInfo.module = vertShaderModule;
+		vertShaderStageInfo.pName = "main";
+		VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
+		fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+		fragShaderStageInfo.module = fragShaderModule;
+		fragShaderStageInfo.pName = "main";
+
+		VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
+		pipelineCreateInfo.stageCount = 2;
+		pipelineCreateInfo.pStages = shaderStages;
+
+	// ===== Vertex Input =====
+		VkVertexInputBindingDescription vertInputBinding = {};
+		vertInputBinding.binding = 0;
+		vertInputBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+		vertInputBinding.stride = 3 * sizeof(float);
+		VkVertexInputAttributeDescription vertInputAttribute = {};
+		vertInputAttribute.binding = 0;
+		vertInputAttribute.format = VK_FORMAT_R32G32B32_SFLOAT;
+		vertInputAttribute.location = 0;
+		vertInputAttribute.offset = 0;
+
+		VkPipelineVertexInputStateCreateInfo vertInputState = {};
+		vertInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+		vertInputState.vertexBindingDescriptionCount = 1;
+		vertInputState.pVertexBindingDescriptions = &vertInputBinding;
+		vertInputState.vertexAttributeDescriptionCount = 1;
+		vertInputState.pVertexAttributeDescriptions = &vertInputAttribute;
+
+		pipelineCreateInfo.pVertexInputState = vertInputState;
+
+	// ===== Input Assembly =====
+		
+
+		pipelineCreateInfo.pInputAssemblyState = nullptr;
+
+	// ===== Viewport =====
+		
+
+		pipelineCreateInfo.pViewportState = nullptr;
+
+
+	// ===== Rasterizer =====
+		
+
+		pipelineCreateInfo.pRasterizationState = nullptr;
+
+	// ===== Multisampling =====
+		
+
+		pipelineCreateInfo.pMultisampleState = nullptr;
+
+	// ===== Depth Stencil =====
+		
+
+		pipelineCreateInfo.pDepthStencilState = nullptr;
+
+	// ===== Color Blend =====
+		
+
+		pipelineCreateInfo.pColorBlendState = nullptr;
+
+	// ===== Dynamic =====
+		
+
+		pipelineCreateInfo.pDynamicState = nullptr;
+
+	// ===== Pipeline Layout =====
+		
+
+		pipelineCreateInfo.layout = nullptr;
+
+	// ===== Pipeline Creation =====
+
+		if (vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline) != VK_SUCCESS)
+			throw std::runtime_error("Failed to create graphics pipeline");
 	}
 
 	VkShaderModule CreateShaderModule(const std::vector<char> _code)

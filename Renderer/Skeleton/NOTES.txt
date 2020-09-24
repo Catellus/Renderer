@@ -1,0 +1,569 @@
+
+TODO keys:
+RESEARCH
+
+/-----------------------------------------------\
+    INITIALIZATION
+\-----------------------------------------------/
+
+WINDOW
+=================================================
+GLFW must have GLFW_INCLUDE_VULKAN defined before included
+Window hint GLFW_CLIENT_API must be GLFW_NO_API to support Vulkan
+
+
+INSTANCE
+=================================================
+The connection to the Vulkan API
+
+ApplicationInfo
+    Holds optional information used to optimize systems
+InstaceCreateInfo
+    Holds applicationInfo reference
+    Enabled extensions
+        modules of additional functionality not native to Vulkan
+        GLFW has some required extensions retrieved with glfwGetRequiredInstanceExtensions
+    Enabled layers
+        Basic validation can be enabled using "VK_LAYER_KHRONOS_validation"
+
+Created using vkCreateInstance
+Cleanup using vkDestroyInstance
+
+
+LAYERS
+=================================================
+Used mostly for validation, debugging, and profiling.
+Ensure desired layers are available using vkEnumerateInstanceLayerProperties
+
+
+SURFACE
+=================================================
+A part of the WindowSystemIntegration extension to interface with the windowing system
+    the extension is included in the glfwGetRequiredInstanceExtensions function
+Surfaces are platform specific
+    GLFW includes glfwCreateWindowSurface to make surface creation platform independant
+Surfaces support varying properties
+    basic capabilities
+        min/max swapchain image count, resolution
+    surface formats
+        pixel format, color space
+    available presentation modes
+        immediate       - Image immediately presented after rendering
+        FIFO            - (Guaranteed available) Images placed into a first-in-first-out queue for presentation (overflow pauses the app until it can be inserted)
+        FIFO relaxed    - Same as FIFO, but if queue was empty, immedietly renders the newly inserted image
+        mailbox         - Like FIFO, but overflow replaces most recently inserted image
+
+
+Created with a variation on vkCreateWin32SurfaceKHR depending on the desired platform
+Or Created with glfwCreateWindowSurface
+Cleanup using vkDestroySurfaceKHR
+
+
+PHYSICAL DEVICE
+=================================================
+The physical GPU to be used in rendering
+One must be chosen
+    All discovered physical devices support Vulkan, but might not support higher than 1.0
+    Must support queue families for desired funcionality
+    For swapchain creation, query details on surface's supported:
+        capabilities
+            vkGetPhysicalDeviceSurfaceCapabilitiesKHR
+        formats
+            vkGetPhysicalDeviceSurfaceFormatsKHR
+            Must have a format
+        presentation modes
+            vkGetPhysicalDeviceSurfacePresentModesKHR
+            muts have a presentation mode
+
+Extensions
+    enumerate supported extensions with vkEnumerateDeviceExtensionProperties
+
+
+QUEUES
+=================================================
+Almost everything in Vulkan is submitted to a queue to be executed
+Queues can support multiple families or just one
+    Queue families are specialized queues (rendering, presentation, compute, etc)
+    Represent which queue to use for a family with its index on the physical device
+    Only need graphics and presentation for basic rendering
+
+Retrieve supported families vkGetPhysicalDeviceQueueFamilyProperties
+    Iterate through retrieved properties
+    test for required queue family bits (VK_QUEUE_GRAPHICS_BIT)
+Extension queues are queried with separate functions
+    vkGetPhysicalDeviceSurfaceSupportKHR returns if a surface is supported by the GPU
+NOTE: The validator will complain if queues share the same index, though it will still work.
+
+Creation of usable queues in logical device creation
+    specify a VKDeviceQueueCreateInfo for each desired family
+Get the queue itself with vkGetDeviceQueue after device creation
+    Queue objects implicitly destroyed with logical device
+
+
+LOGICAL DEVICE
+=================================================
+The link to the GPU used for queues, etc.
+    multiple can be created using the same physical device using different specifications
+
+Create using VkDeviceCreateInfo
+    Holds information about:
+        queue creation
+        physical device specific features to be used
+        physical device specific extensions (ex: swapchains) and layers (ex: validation)
+
+Create using vkCreateDevice
+Cleanup using vkDestroyDevice
+
+
+SWAPCHAIN
+=================================================
+The set of images rendered to, and displayed
+Part of window functionality (platform specific)
+    Must be enabled through extensions; no native support
+Physical device must support extension VK_KHR_SWAPCHAIN_EXTENSION_NAME (macro defined as "VK_KHR_swapchain")
+    Extension must be included in logical device creation
+
+Choose surface details to use in creation (below are typical, but not required):
+        capabilities
+            image count: .maxImageCount or .minImageCount+1, if available
+            extent: (window_width, window_height)
+        formats
+            image format: VK_FORMAT_B8G8R8A8_SRGB
+            colorspace: VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+        presentation mode
+            if available: VK_PRESENT_MODE_MAILBOX_KHR
+            else: VK_PRESENT_MODE_FIFO_KHR
+
+        Save chosen imageFormat, and presentationMode for use in imageViews, and renderpass
+
+Creation
+    swapchains typically only have one layer unless in VR use
+    image use will be VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+        (rendering directly to them)
+        Use other modes if doing post-processing first
+    Sharing mode
+        exclusive (best performance)
+            Queues are the same
+            can be used with different queues, but ownership must be transfered
+        concurrent
+            queues are different
+
+Created using vkCreateSwapchainKHR
+Cleanup using vkDestroySwapchainKHR
+
+Get the created images using vkGetSwapchainImagesKHR
+
+SWAPCHAIN RECREATION
+=================================================
+Swapchains may be recreated frequently
+    switching them out, resizing the window, etc.
+
+vkAcquireNextImageKHR || vkQueuePresentKHR can alert when swapchain is out of data or suboptimal with its VkResult
+    VK_ERROR_OUT_OF_DATE_KHR
+        no longer possible to present to this swapchain
+        * this may not be immediately called after window resize
+    VK_SUBOPTIMAL_KHR
+        may be possible to present
+Window minimization may trigger a false OUT_OF_DATE
+    framebuffer width/height will be 0 when minimized
+
+Ensure synchronization is inactive
+Cleanup swapchain dependant objects
+    framebuffers
+    command buffers
+        command pool is reusable
+    pipeline / pipeline layout
+    renderpass
+    image views
+    swapchain
+create new swapchain objects
+
+
+IMAGE VIEWS
+=================================================
+The details on how and where to access an image
+    # of dimensions, usage (color, depth buffer, etc)
+
+Must have one for each image in swapchain
+
+Creation
+    components: how the color channels are mapped
+    subresourceRange: image's purpose and what parts should be accessed (multiple layers useful in VR)
+        image_aspects
+
+Created using vkCreateImageView
+Cleanup using vkDestroyImageView
+
+
+SHADERS & SHADER MODULES
+=================================================
+GPU programs run in respective stages of the pipeline
+Shders in Vulkan must be in a bytecode format called SPIR-V
+    This allows GPU drivers' compilers to be more accurate than from GLSL
+    GLSL can be compiled into SPIR-V by glslangValidator.exe and glslc.exe (both included in the Vulkan SDK)
+        glslc includes GCC parameter formatting and #include support
+
+Loading shaders
+    SPIR-V files should be read as binaries
+    Store the information in the binary as a character array
+
+Vertex:
+    Run for every vertex input
+    Typically used for positioning the vertex
+        Outputs clip coordinates
+            4d vector turned into Normalized Device Coordinates by dividing it by its w value
+            normalized device coordinates are -1 to 1 on X and Y, 0 to 1 on Z
+
+static I/O
+    input is set when bound
+        layout(location = <index #>) in <type> <name>
+    outputs only to other shaders
+        layout(location = <index #>) out <type> <name>
+
+Fragment:
+    Run for every pixel fo the image
+    Produces color and depth information
+
+Module Creation
+    Simply needs the binary information loaded from the file (casted to a const uint32_t*), and the size of the array
+
+Created using vkCreateShaderModule
+Cleanup using vkDestroyShaderModule
+
+
+VERTEX INPUTS
+=================================================
+Binding the vertex information (VkVertexInputBindingDescription)
+    per-vertex total size, space between data, per-vertex or per-instance
+        like position, color, normal, uv, etc.
+
+Describe vertex attributes (VkVertexInputAttributeDescription)
+    Type of attributes, binding to load from, offset
+        posiiton, color, normal, uv, etc.
+    usually an array of descriptions to detail each included
+
+Bound in graphics pipeline creation
+
+
+INDEX BUFFER
+=================================================
+
+
+
+BUFFERS
+=================================================
+Buffer creation
+    GPU readable memory
+    Should be large enough to store whole datasets
+        whole vert data arrays, etc.
+    Does not handle input binding/attribute desctriptions
+        Only the actual data
+
+    independant from the renderer
+
+    Created using vkCreateBuffer
+    Cleanup using vkDestroyBuffer
+
+Buffer memory allocation
+    Buffers have different memory requirements found with vkGetBufferMemoryRequirements
+        memory type bits are those that the buffer can use on the GPU
+    GPUs support specific memory types found with vkGetPhysicalDeviceMemoryProperties
+    GPU must support the memory requirements of the buffer
+        GPU memory properties (property flags) must support any desired functionality
+
+    Memory alocated using vkAllocateMemory
+        memTypeIndex is the index of the memory type that supports the buffer's requirements & desired properties
+
+    After allocation, memory must be bound
+        vkBindBufferMemory
+
+    Cleanup using vkDestroyBuffer, vkFreeMemory
+
+Filling buffers
+    For host visible memoy (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT property), memory can be mapped
+        vkMapMemory points to the allocated memory to which data can be written to and read from
+            only one mapping can be active at a time per memory allocation
+        vkUnmapMemory
+    for device visible memory, Staging buffers are required
+        Using this method makes the memory more easily readable for the GPU
+
+
+STAGING BUFFERS
+=================================================
+CPU acceccable buffers that set data in GPU accessable buffers
+    more efficient on the GPU end
+Copying data between buffers requires a transfer queue
+    graphics & compute queues implicitly have this ability
+    May want to have an independant queue for buffer transfers
+
+Buffers transferred from used as TRANSFER_SRC, transferred to used as TRANSFER_DST
+
+Memory copying is handled using a command buffer
+    (may want a transient command pool for transfer commands)
+    The only command will be vkCmdCopyBuffer
+The command buffer is not needed after transfer
+    can be immediately freed
+
+
+RENDER PASS
+=================================================
+STUDY
+Details the framebuffer attachments desired for rendering
+describe the attachment(s)
+Each render pass can have multiple subpasses, must have one.
+    Each subpass references at least one attachment described above
+        reference the attachment(s) to use
+    Describe the subpass(es)
+
+    There is an implicit subpass before and after the renderpass
+
+SubpassDependencies
+    "Subpass dependencies describe execution and memory dependencies between subpasses."
+        Can describe which subpasses lead to which (src must always be a lower index than dst unless subpass_external)
+    RESEARCH
+        VkSubpassDependency
+
+Created using vkCreateRenderPass
+Cleanup using vkDestroyRenderPass
+
+
+GRAPHICS PIPELINE
+=================================================
+Sequence of stages resulting in a rendered image
+    Takes inputs and creates a rasterized image
+    Split into stage types: (stage #)
+        fixed function: functionality is predefined, but can be altered with parameters
+            Input assembler (0), Rasterization (4), and Color blending (6)
+        programmable function: Custom code can be uploaded to GPU to do whatever you want
+            Vertex shader (1), Tesselation (2), Geometry shader (3), and Fragment shader (5)
+
+Created using vkCreateGraphicsPipelines
+Cleanup using vkDestroyPipeline (Before pipeline layout)
+
+Each stage of the pipeline needs to be set manually.
+    Some stages only have a few parameters to change, others are fully customizable (and omittable)
+    Each defined by VkPipeline*StateCreateInfo
+        replacing "*" with the stage title
+
+Shader Stages
+    Can specify the shaders that run in each ShaderStage
+    An array of VkPipelineShaderStageCreateInfo, defining the shader stage, its module, and the entrypoint (pName)
+
+Vertex Input
+    Format of vertex data passed to vertex shader
+        vertex buffer information
+
+    Bindings
+        space between data, per-vertex or per-instance
+    attribute descriptions
+        Type of attributes, binding to load from, offset
+
+Input Assembly
+    Topology
+        Type of geometry to draw
+        points, lines, trinalges
+    PrimiteiveRestartEnable
+        RESEARCH
+        VK_FALSE will just draw whatever set in topology
+
+Viewport
+    VkViewport
+        Describes the region of the framebuffer rendered to
+        Typically used the extent of the swapchain (starting a 0,0)
+    Scissor
+        Acts as a mask
+            Everything outside of its extent is discarded at rasterization
+        Typically set as the swapchain's extent
+
+Rasterizer
+    Turns geometry into fragments (data -> pixels)
+    Handles depth tests and face culling
+
+Multisampling
+    Sample each fragment multiple times to get all information on that pixel
+        Sample from multiple polygons that lie on the same pixel
+        One way to do Anti-Aliasing
+    Requires a GPU feature to enable
+
+Depth Stencil
+    Depth
+        
+    Stencil
+        
+
+Color Blend
+    Combines color output from fragment shader with framebuffer's existing color
+    Can be mixed, or combined
+        RESEARCH (They sound the same)
+
+    Two parts:
+        VkPipelineColorBlendAttachmentState
+            Framebuffer specific color blending options
+                ColorWriteMask: Which channels of RGBA are enabled for writing
+            disable blending (within this struct) to simply replace the color
+
+        VkPipelineColorBlendStateCreateInfo
+            Global color blending options
+            Contains a list of all Attachment structs
+
+Dynamic
+    Parts of the pipeline that can be changed without recreating the pipeline
+    Holds a list of above stages
+
+    Can be omitted with a nullptr
+
+Pipeline Layout
+    Holds information about shader uniforms
+    Created using vkCreatePipelineLayout
+    Cleanup using vkDestroyPipelineLayout
+
+
+FRAMEBUFFERS
+=================================================
+A collection of memory attachments that a render pass uses
+Typically have one for each imageView in the swapchain (With the imageView as the sole attachment)
+
+Created using vkCreateFramebuffer
+Cleanup using vkDestroyFramebuffer
+
+
+COMMAND POOLS
+=================================================
+Manage command buffers, and the memory used to store them
+A pool is attached to a queue family
+
+Created using vkCreateCommandPool
+Cleanup using vkDestroyCommandPool
+
+
+COMMAND BUFFERS
+=================================================
+Hold pre-recorded commands for GPU/Vulkan operations
+Each command buffer is bound to a framebuffer
+
+command buffers must be allocated
+    vkAllocateCommandBuffers
+
+command buffers are recorded
+    recording must begin (vkBeginCommandBuffer)
+
+    to use command buffers for drawing, use vkCmdBeginRenderPass
+        info.pClearValues is where the clearcolor(s) is set
+
+        Bind the graphics pipeline
+            vkCmdBindPipeline
+        Bind vertex buffers with
+            vkCmdBindVertexBuffers
+        Draw a triangle(s) using vertex buffer with
+            vkCmdDraw(commandBuffers[i], <# bindings>, 1, <buffer to bind>, <Offset>);
+
+        End renderpass commands with vkCmdEndRenderPass
+
+    recording must end (vkEndCommandBuffer)
+
+Cleaned up implicitly with commandpool
+
+
+SYNCHRONIZATION
+=================================================
+Semaphores
+    Used for GPU-GPU synchronization
+    Cannot be accessed from the program (CPU)
+    Primarily used to sync operations in/across command queues
+        (Sync & signal when an image is available to be rendered to, and when an image is finished rendering)
+Fences
+    good for CPU-GPU synchronization
+    designed to mainly synchronize the application with its rendering
+    Their state can be accessed from the program using various calls
+        vkWaitForFences
+    must be un-signaled
+        vkResetFences
+
+    Created in an un-signaled state
+        This makes waitForFences wait forever.
+        Can be created in signaled state with a flag in createInfo
+
+
+    have no required fields besides sType
+
+Created using vkCreateSemaphore  / vkCreateFence
+Cleanup using vkDestroySemaphore / vkDestroyFence
+
+
+/-----------------------------------------------\
+    RENDERING
+\-----------------------------------------------/
+
+BASIC DRAW FRAME
+=================================================
+Get an image to draw to
+    vkAcquireNextImageKHR
+
+
+Submit a command buffer
+    VkSubmitInfo
+        waitSemaphores  : (Front) semaphores that must be signaled before executing the commands herein
+        signalSemaphores: (Back)  semaphores that will be signaled after  executing the commands herein
+    vkQueueSubmit
+
+Presentation
+    vkQueuePresentKHR
+        presentInfo
+            Handles semaphores to trigger after display
+        swpachain
+            The swapchain(s) to render to
+            almost always only one
+
+Syncing the GPU and CPU
+    This is done by limiting the number of frames "im flight"
+
+    Using vkQueueWaitIdle will do the trick, but will stop until rendering completes
+        only renders one frame at a time
+        very inefficient
+
+    frames in flight
+        frames that are being rendered to, or displayed to the screen
+        This can be managed using fences
+
+        One sync set per in-flight slot
+            two semaphores  (image available, render complete)
+            one fence       (slot in use)
+        imageInFlightFences
+            signaled when this image is being used
+            one per image
+
+Steps:
+    wait for the flight slot to open
+    acquire the image
+    <recreate renderer>
+    Ensure the image is unused, otherwise wait
+    image use = slot use
+    reset slot use
+    submit graphics queue
+    presetn queue
+    <recreate renderer>
+    increment slot index
+
+/-----------------------------------------------\
+    CLEANUP
+\-----------------------------------------------/
+
+On application exit, before cleanup, the device must have no running commands
+    vkDeviceWaitIdle
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
