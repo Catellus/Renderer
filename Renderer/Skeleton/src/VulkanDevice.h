@@ -113,6 +113,27 @@ struct VulkanDevice
 		vkGetDeviceQueue(logicalDevice, queueFamilyIndices.transfer, 0, &transferQueue);
 		vkGetDeviceQueue(logicalDevice, queueFamilyIndices.present , 0, &presentQueue);
 	}
+
+	VkBuffer CreateBuffer(const std::vector<uint32_t> _familyIndices, uint32_t _size, VkBufferUsageFlags _usage)
+	{
+		VkBuffer tmpBuffer;
+
+		VkBufferCreateInfo createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		createInfo.queueFamilyIndexCount = (uint32_t)_familyIndices.size();
+		createInfo.pQueueFamilyIndices = _familyIndices.data();
+		createInfo.sharingMode = (uint32_t)_familyIndices.size() == 1 ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
+		createInfo.size = _size;
+		createInfo.usage = _usage;
+
+		if (vkCreateBuffer(logicalDevice, &createInfo, nullptr, &tmpBuffer) != VK_SUCCESS)
+			throw std::runtime_error("Failed to create buffer");
+
+		return tmpBuffer;
+	}
+
+	// Fill buffer
+
 };
 
 
