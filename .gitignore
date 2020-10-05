@@ -4,6 +4,7 @@
 ## Get latest from httpsgithub.comgithubgitignoreblobmasterVisualStudio.gitignore
 
 compile.bat
+ShaderCompile.bat
 
 # User-specific files
 .rsuser
