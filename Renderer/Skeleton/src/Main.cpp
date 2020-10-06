@@ -54,9 +54,14 @@ private:
 	};
 
 	const std::vector<Vertex> verts = {
-		{{ 0.0f, -0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}},
-		{{ 0.5f,  0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-		{{-0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}
+		{{-0.5f, -0.5f, 0.0f}, {0.8f, 0.8f, 0.0f}},		//TL
+		{{ 0.5f, -0.5f, 0.0f}, {0.0f, 0.0f, 0.0f}},		//TR
+		{{ 0.5f,  0.5f, 0.0f}, {0.7f, 0.4f, 0.0f}},		//BR
+		{{-0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 0.0f}}		//BL
+	};
+
+	const std::vector<uint16_t> indices = {
+		0, 1, 2, 2, 3, 0
 	};
 
 	std::vector<const char*> instanceLayers = { "VK_LAYER_KHRONOS_validation" };
@@ -75,6 +80,7 @@ private:
 	uint32_t height = 600;
 	const char* title = "Window Title";
 	GLFWwindow* window;
+	bool windowResized = false;
 
 // ===== Vulkan Members =====
 	VkInstance instance;
@@ -94,7 +100,11 @@ private:
 
 	VkCommandPool commandPool;
 	std::vector<VkCommandBuffer> commandBuffers;
+
 	VkBuffer vertexBuffer;
+	VkDeviceMemory vertexBufferMemory;
+	VkBuffer indexBuffer;
+	VkDeviceMemory indexBufferMemory;
 
 
 	const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -129,8 +139,54 @@ public:
 		CreateFrameBuffers();
 		CreateCommandPool();
 		CreateVertexBuffer();
+		CreateIndexBuffer();
 		CreateCommandBuffers();
 		CreateSyncObjects();
+	}
+
+	void RecreateSwapchain()
+	{
+		std::cout << "Swapchain resized: " << windowResized << std::endl;
+
+		int width = 0, height = 0;
+		glfwGetFramebufferSize(window, &width, &height);
+		while (width == 0 || height == 0)
+		{
+			glfwGetFramebufferSize(window, &width, &height);
+			glfwWaitEvents();
+		}
+
+		vkDeviceWaitIdle(device->logicalDevice);
+
+		CleanupSwapchain();
+
+		CreateSwapchain();
+		CreateRenderpass();
+		CreateGraphicsPipeline();
+		CreateFrameBuffers();
+		CreateCommandBuffers();
+	}
+
+	void CleanupSwapchain()
+	{
+		for (const auto& f : swapchainFrameBuffers)
+			vkDestroyFramebuffer(device->logicalDevice, f, nullptr);
+
+		vkFreeCommandBuffers(device->logicalDevice, commandPool, (uint32_t)commandBuffers.size(), commandBuffers.data());
+
+		vkDestroyPipeline(device->logicalDevice, pipeline, nullptr);
+		vkDestroyPipelineLayout(device->logicalDevice, pipelineLayout, nullptr);
+		vkDestroyRenderPass(device->logicalDevice, renderPass, nullptr);
+
+		for (const auto& v : swapchainImageViews)
+			vkDestroyImageView(device->logicalDevice, v, nullptr);
+		//swapchainImageViews.clear();
+		//swapchainImages.clear();
+
+		//vkDestroyShaderModule(device->logicalDevice, vertShaderModule, nullptr);
+		//vkDestroyShaderModule(device->logicalDevice, fragShaderModule, nullptr);
+
+		vkDestroySwapchainKHR(device->logicalDevice, swapchain, nullptr);
 	}
 
 	void MainLoop()
@@ -149,7 +205,17 @@ public:
 		vkWaitForFences(device->logicalDevice, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
 		uint32_t imageIndex;
-		vkAcquireNextImageKHR(device->logicalDevice, swapchain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+		VkResult result = vkAcquireNextImageKHR(device->logicalDevice, swapchain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+
+		if (result == VK_ERROR_OUT_OF_DATE_KHR)
+		{
+			RecreateSwapchain();
+			return;
+		}
+		else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+		{
+			throw std::runtime_error("Failed to acquire swapchain image");
+		}
 
 		if (imageIsInFlight[imageIndex] != VK_NULL_HANDLE)
 			vkWaitForFences(device->logicalDevice, 1, &imageIsInFlight[imageIndex], VK_TRUE, UINT64_MAX);
@@ -180,13 +246,27 @@ public:
 		presentInfo.pSwapchains = &swapchain;
 		presentInfo.pImageIndices = &imageIndex;
 
-		vkQueuePresentKHR(device->presentQueue, &presentInfo);
+		result = vkQueuePresentKHR(device->presentQueue, &presentInfo);
+
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || windowResized)
+		{
+			windowResized = false;
+			RecreateSwapchain();
+		}
+		else if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to present swapchain");
+		}
 
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
 	void Cleanup()
 	{
+		CleanupSwapchain();
+
+		vkDestroyBuffer(device->logicalDevice, indexBuffer, nullptr);
+		vkFreeMemory(device->logicalDevice, indexBufferMemory, nullptr);
 		vkDestroyBuffer(device->logicalDevice, vertexBuffer, nullptr);
 		vkFreeMemory(device->logicalDevice, vertexBufferMemory, nullptr);
 
@@ -199,30 +279,13 @@ public:
 
 		vkDestroyCommandPool(device->logicalDevice, commandPool, nullptr);
 
-		for (const auto& f : swapchainFrameBuffers)
-			vkDestroyFramebuffer(device->logicalDevice, f, nullptr);
-
-		vkDestroyPipelineLayout(device->logicalDevice, pipelineLayout, nullptr);
-		vkDestroyRenderPass(device->logicalDevice, renderPass, nullptr);
-
-		vkDestroyShaderModule(device->logicalDevice, vertShaderModule, nullptr);
-		vkDestroyShaderModule(device->logicalDevice, fragShaderModule, nullptr);
-
-		vkDestroyPipeline(device->logicalDevice, pipeline, nullptr);
-
-		for (const auto& v : swapchainImageViews)
-			vkDestroyImageView(device->logicalDevice, v, nullptr);
-		swapchainImageViews.clear();
-		swapchainImages.clear();
-
-		vkDestroySwapchainKHR(device->logicalDevice, swapchain, nullptr);
-
 		device->Cleanup();
 
 		vkDestroySurfaceKHR(instance, surface, nullptr);
 		vkDestroyInstance(instance, nullptr);
 
 		glfwDestroyWindow(window);
+		glfwTerminate();
 	}
 
 // ====================================
@@ -233,7 +296,7 @@ public:
 	{
 		if (!glfwInit())
 			throw std::runtime_error("Failed to init GLFW");
-		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+		//glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
 		window = glfwCreateWindow(width, height, title, NULL, NULL);
@@ -245,6 +308,15 @@ public:
 		{
 			instanceExtensions.push_back(glfwRequiredExtentions[i]);
 		}
+
+		glfwSetWindowUserPointer(window, this);
+		glfwSetFramebufferSizeCallback(window, WindowResizeCallback);
+	}
+
+	static void WindowResizeCallback(GLFWwindow* _window, int _width, int _height)
+	{
+		auto app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(_window));
+		app->windowResized = true;
 	}
 
 	void CreateSurface()
@@ -432,7 +504,7 @@ public:
 		createInfo.imageArrayLayers = 1;
 		createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-		if (device->queueFamilyIndices.graphics != device->queueFamilyIndices.present)
+		if (device->queueFamilyIndices.graphics == device->queueFamilyIndices.present)
 		{
 			createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		}
@@ -508,7 +580,9 @@ public:
 		}
 		else
 		{
-			VkExtent2D actual = { width, height };
+			int tmpWidth, tmpHeight;
+			glfwGetFramebufferSize(window, &tmpWidth, &tmpHeight);
+			VkExtent2D actual = {(uint32_t)tmpWidth, (uint32_t)tmpHeight};
 			actual.width = clamp(actual.width, _properties.capabilities.minImageExtent.width, _properties.capabilities.maxImageExtent.width);
 			actual.height = clamp(actual.height, _properties.capabilities.minImageExtent.height, _properties.capabilities.maxImageExtent.height);
 			_extent = actual;
@@ -594,10 +668,10 @@ public:
         pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 
 	// ===== Shader Stage =====
-        std::vector<char> vertFile = LoadFile("D:\\dev\\Renderer_REPO\\Renderer\\Skeleton\\res\\vert.spv");
-        std::vector<char> fragFile = LoadFile("D:\\dev\\Renderer_REPO\\Renderer\\Skeleton\\res\\frag.spv");
-        vertShaderModule = CreateShaderModule(vertFile);
-        fragShaderModule = CreateShaderModule(fragFile);
+		std::vector<char> vertFile = LoadFile(".\\res\\default_vert.spv");
+		std::vector<char> fragFile = LoadFile(".\\res\\default_frag.spv");
+		vertShaderModule = CreateShaderModule(vertFile);
+		fragShaderModule = CreateShaderModule(fragFile);
 
 		VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
 		vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -707,8 +781,6 @@ public:
 		pipelineCreateInfo.pColorBlendState = &colorBlendState;
 
 	// ===== Dynamic =====
-		
-
 		pipelineCreateInfo.pDynamicState = nullptr;
 
 	// ===== Pipeline Layout =====
@@ -722,6 +794,9 @@ public:
 
 		if (vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline) != VK_SUCCESS)
 			throw std::runtime_error("Failed to create graphics pipeline");
+
+		vkDestroyShaderModule(device->logicalDevice, vertShaderModule, nullptr);
+		vkDestroyShaderModule(device->logicalDevice, fragShaderModule, nullptr);
 	}
 
 	void CreatePipelineLayout()
@@ -813,7 +888,8 @@ public:
 			VkBuffer vertBuffers[] = {vertexBuffer};
 			VkDeviceSize offsets[] = {0};
 			vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertBuffers, offsets);
-			vkCmdDraw(commandBuffers[i], static_cast<uint32_t>(verts.size()), 1, 0, 0);
+			vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+			vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 			vkCmdEndRenderPass(commandBuffers[i]);
 
@@ -846,36 +922,133 @@ public:
 	}
 
 // Modularization can really happen here
-	VkDeviceMemory vertexBufferMemory;
 
-	void CreateVertexBuffer()
+	void CreateBuffer(VkDeviceSize _bufferSize, VkBufferUsageFlags _bufferUsage, VkMemoryPropertyFlags _memoryProperties, VkBuffer& _buffer, VkDeviceMemory& _memory)
 	{
 		VkBufferCreateInfo bufferInfo = {};
 		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-		bufferInfo.size = sizeof(verts[0]) * (uint32_t)verts.size();
-		bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		bufferInfo.size = _bufferSize;
+		bufferInfo.usage = _bufferUsage;
 		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-		if (vkCreateBuffer(device->logicalDevice, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS)
-			throw std::runtime_error("Failed to create vertex buffer");
+		if (vkCreateBuffer(device->logicalDevice, &bufferInfo, nullptr, &_buffer) != VK_SUCCESS)
+			throw std::runtime_error("Failed to create buffer");
 
 		VkMemoryRequirements memRequirements;
-		vkGetBufferMemoryRequirements(device->logicalDevice, vertexBuffer, &memRequirements);
+		vkGetBufferMemoryRequirements(device->logicalDevice, _buffer, &memRequirements);
 
 		VkMemoryAllocateInfo allocInfo = {};
 		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 		allocInfo.allocationSize = memRequirements.size;
-		allocInfo.memoryTypeIndex = FindMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+		allocInfo.memoryTypeIndex = FindMemoryType(memRequirements.memoryTypeBits, _memoryProperties);
 
-		if (vkAllocateMemory(device->logicalDevice, &allocInfo, nullptr, &vertexBufferMemory) != VK_SUCCESS)
+		// TODO : allocate more than 1 buffer's memory per AllocateMemory call
+		if (vkAllocateMemory(device->logicalDevice, &allocInfo, nullptr, &_memory) != VK_SUCCESS)
 			throw std::runtime_error("Failed to allocate vertex buffer memory");
 
-		vkBindBufferMemory(device->logicalDevice, vertexBuffer, vertexBufferMemory, 0);
+		vkBindBufferMemory(device->logicalDevice, _buffer, _memory, 0);
+	}
+
+	void CreateVertexBuffer()
+	{
+		VkDeviceSize bufferSize = sizeof(verts[0]) * (uint32_t)verts.size();
+
+		VkBuffer stagingBuffer;
+		VkDeviceMemory stagingBufferMemory;
+		CreateBuffer(
+			bufferSize,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			stagingBuffer,
+			stagingBufferMemory
+		);
 
 		void* data;
-		vkMapMemory(device->logicalDevice, vertexBufferMemory, 0, bufferInfo.size, 0, &data);
-		memcpy(data, verts.data(), (uint32_t)bufferInfo.size);
-		vkUnmapMemory(device->logicalDevice, vertexBufferMemory);
+		vkMapMemory(device->logicalDevice, stagingBufferMemory, 0, bufferSize, 0, &data);
+		memcpy(data, verts.data(), (uint32_t)bufferSize);
+		vkUnmapMemory(device->logicalDevice, stagingBufferMemory);
+
+		CreateBuffer(
+			bufferSize,
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+			vertexBuffer,
+			vertexBufferMemory
+		);
+
+		CopyBuffer(stagingBuffer, vertexBuffer, bufferSize);
+
+		vkDestroyBuffer(device->logicalDevice, stagingBuffer, nullptr);
+		vkFreeMemory(device->logicalDevice, stagingBufferMemory, nullptr);
+	}
+
+	void CreateIndexBuffer()
+	{
+		VkDeviceSize bufferSize = sizeof(indices[0]) * (uint32_t)indices.size();
+
+		VkBuffer stagingBuffer;
+		VkDeviceMemory stagingBufferMemory;
+		CreateBuffer(
+			bufferSize,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			stagingBuffer,
+			stagingBufferMemory
+		);
+
+		void* data;
+		vkMapMemory(device->logicalDevice, stagingBufferMemory, 0, bufferSize, 0, &data);
+		memcpy(data, indices.data(), (uint32_t)bufferSize);
+		vkUnmapMemory(device->logicalDevice, stagingBufferMemory);
+
+		CreateBuffer(
+			bufferSize,
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+			indexBuffer,
+			indexBufferMemory
+		);
+
+		CopyBuffer(stagingBuffer, indexBuffer, bufferSize);
+
+		vkDestroyBuffer(device->logicalDevice, stagingBuffer, nullptr);
+		vkFreeMemory(device->logicalDevice, stagingBufferMemory, nullptr);
+	}
+
+	// TODO : Create a transient command pool for one-shot buffers like this
+	void CopyBuffer(VkBuffer _src, VkBuffer _dst, VkDeviceSize _size)
+	{
+		VkCommandBufferAllocateInfo allocInfo = {};
+		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		allocInfo.commandPool = commandPool;
+		allocInfo.commandBufferCount = 1;
+
+		VkCommandBuffer commandBuffer;
+		vkAllocateCommandBuffers(device->logicalDevice, &allocInfo, &commandBuffer);
+
+		VkCommandBufferBeginInfo beginInfo = {};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		vkBeginCommandBuffer(commandBuffer, &beginInfo);
+		VkBufferCopy copyRegion = {};
+		copyRegion.srcOffset = 0;
+		copyRegion.dstOffset = 0;
+		copyRegion.size = _size;
+
+		vkCmdCopyBuffer(commandBuffer, _src, _dst, 1, &copyRegion);
+		vkEndCommandBuffer(commandBuffer);
+
+		VkSubmitInfo submitInfo = {};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &commandBuffer;
+		// TODO : Use transfer queue & a fence (not queueWaitIdle)
+		vkQueueSubmit(device->graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+		vkQueueWaitIdle(device->graphicsQueue);
+
+		vkFreeCommandBuffers(device->logicalDevice, commandPool, 1, &commandBuffer);
 	}
 
 	uint32_t FindMemoryType(uint32_t _filter, VkMemoryPropertyFlags _properties)
