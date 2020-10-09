@@ -60,6 +60,8 @@ struct VulkanDevice
 		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 		createInfo.enabledExtensionCount = (uint32_t)enabledExtensions.size();
 		createInfo.ppEnabledExtensionNames = enabledExtensions.data();
+
+		enabledFeatures.samplerAnisotropy = VK_TRUE;
 		createInfo.pEnabledFeatures = &enabledFeatures;
 
 		uint32_t i = 0;
@@ -188,10 +190,23 @@ struct VulkanDevice
 
 	void CopyBuffer(VkBuffer _src, VkBuffer _dst, VkDeviceSize _size)
 	{
+		VkCommandBuffer commandBuffer = BeginSingleTimeCommands(transientPoolIndex);
+
+		VkBufferCopy copyRegion = {};
+		copyRegion.srcOffset = 0;
+		copyRegion.dstOffset = 0;
+		copyRegion.size = _size;
+		vkCmdCopyBuffer(commandBuffer, _src, _dst, 1, &copyRegion);
+
+		EndSingleTimeCommands(commandBuffer, transientPoolIndex, transferQueue);
+	}
+
+	VkCommandBuffer BeginSingleTimeCommands(uint32_t _poolIndex)
+	{
 		VkCommandBufferAllocateInfo allocInfo = {};
 		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		allocInfo.commandPool = commandPools[transientPoolIndex];
+		allocInfo.commandPool = commandPools[_poolIndex];
 		allocInfo.commandBufferCount = 1;
 
 		VkCommandBuffer commandBuffer;
@@ -202,23 +217,22 @@ struct VulkanDevice
 		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
 		vkBeginCommandBuffer(commandBuffer, &beginInfo);
-		VkBufferCopy copyRegion = {};
-		copyRegion.srcOffset = 0;
-		copyRegion.dstOffset = 0;
-		copyRegion.size = _size;
+		return commandBuffer;
+	}
 
-		vkCmdCopyBuffer(commandBuffer, _src, _dst, 1, &copyRegion);
-		vkEndCommandBuffer(commandBuffer);
+	void EndSingleTimeCommands(VkCommandBuffer& _commandBuffer, uint32_t _poolIndex, VkQueue _queue)
+	{
+		vkEndCommandBuffer(_commandBuffer);
 
 		VkSubmitInfo submitInfo = {};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &commandBuffer;
-		// TODO : Use transfer queue & a fence (not queueWaitIdle)
-		vkQueueSubmit(transferQueue, 1, &submitInfo, VK_NULL_HANDLE);
-		vkQueueWaitIdle(transferQueue);
+		submitInfo.pCommandBuffers = &_commandBuffer;
 
-		vkFreeCommandBuffers(logicalDevice, commandPools[transientPoolIndex], 1, &commandBuffer);
+		// TODO : Use transfer queue & a fence (not queueWaitIdle)
+		vkQueueSubmit(_queue, 1, &submitInfo, VK_NULL_HANDLE);
+		vkQueueWaitIdle(_queue);
+		vkFreeCommandBuffers(logicalDevice, commandPools[_poolIndex], 1, &_commandBuffer);
 	}
 
 

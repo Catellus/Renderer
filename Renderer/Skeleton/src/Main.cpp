@@ -13,6 +13,8 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
 
 #include "VulkanDevice.h"
 
@@ -39,6 +41,7 @@ private:
 	struct Vertex {
 		glm::vec3 position;
 		glm::vec3 color;
+		glm::vec2 texCoord;
 
 		static VkVertexInputBindingDescription GetBindingDescription() {
 			VkVertexInputBindingDescription bindingDescription = {};
@@ -47,39 +50,48 @@ private:
 			bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 			return bindingDescription;
 		}
-		static std::array<VkVertexInputAttributeDescription, 2> GetAttributeDescription() {
-			std::array<VkVertexInputAttributeDescription, 2> attributeDescription = {};
+		static std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescription() {
+			std::array<VkVertexInputAttributeDescription, 3> attributeDescription = {};
+			// Position
 			attributeDescription[0].binding = 0;
 			attributeDescription[0].location = 0;
 			attributeDescription[0].format = VK_FORMAT_R32G32B32_SFLOAT;
 			attributeDescription[0].offset = offsetof(Vertex, position);
+			// Color
 			attributeDescription[1].binding = 0;
 			attributeDescription[1].location = 1;
 			attributeDescription[1].format = VK_FORMAT_R32G32B32_SFLOAT;
 			attributeDescription[1].offset = offsetof(Vertex, color);
+			// UV coord
+			attributeDescription[2].binding = 0;
+			attributeDescription[2].location = 2;
+			attributeDescription[2].format = VK_FORMAT_R32G32_SFLOAT;
+			attributeDescription[2].offset = offsetof(Vertex, texCoord);
 			return attributeDescription;
 		}
 	};
 
 	const std::vector<Vertex> verts = {
-		{{ 0.0f  , -0.65f, 0.0f}, {1.0f, 1.0f , 1.0f }}, //0
-		{{ 0.1f  , -0.6f , 0.0f}, {1.0f, 1.0f , 1.0f }}, //1
-		{{-0.1f  , -0.6f , 0.0f}, {1.0f, 1.0f , 1.0f }}, //2
-		{{ 0.25f , -0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}}, //3
-		{{-0.25f , -0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}}, //4
-		{{ 0.35f ,  0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}}, //5
-		{{-0.35f ,  0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}}, //6
-		{{ 0.4f  ,  0.5f , 0.0f}, {1.0f, 0.86f, 0.0f }}, //7
-		{{-0.4f  ,  0.5f , 0.0f}, {1.0f, 0.86f, 0.0f }}, //8
-		{{ 0.325f,  0.6f , 0.0f}, {1.0f, 0.86f, 0.0f }}, //9
-		{{-0.325f,  0.6f , 0.0f}, {1.0f, 0.86f, 0.0f }}, //10
-		{{ 0.2f  ,  0.65f, 0.0f}, {1.0f, 0.86f, 0.0f }}, //11
-		{{-0.2f  ,  0.65f, 0.0f}, {1.0f, 0.86f, 0.0f }}, //12
-		{{ 0.0f  ,  0.7f , 0.0f}, {1.0f, 0.86f, 0.0f }}, //13
+		{{ 0.0f  , -0.65f, 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //0
+		{{ 0.1f  , -0.6f , 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //1
+		{{-0.1f  , -0.6f , 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //2
+		{{ 0.25f , -0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //3
+		{{-0.25f , -0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //4
+		{{ 0.35f ,  0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //5
+		{{-0.35f ,  0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //6
+		{{ 0.4f  ,  0.5f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //7
+		{{-0.4f  ,  0.5f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //8
+		{{ 0.325f,  0.6f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //9
+		{{-0.325f,  0.6f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //10
+		{{ 0.2f  ,  0.65f, 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //11
+		{{-0.2f  ,  0.65f, 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //12
+		{{ 0.0f  ,  0.7f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //13
 
-		{{-0.8f, 0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}}, //14
-		{{ 0.8f, 0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}}, //15
-		{{ 0.0f,-0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}}  //16
+		{{-0.8f, 0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f}}, //14
+		{{ 0.8f, 0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {1.0f, 1.0f}}, //15
+		{{ 0.8f,-0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f}}, //16
+		{{-0.8f,-0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}  //17
+
 	};
 
 	const std::vector<uint16_t> indices = {
@@ -91,7 +103,7 @@ private:
 		9, 11, 10, 10, 11, 12,
 		11, 13, 12,
 
-		15, 14, 16
+		15, 14, 16, 16, 14, 17
 	};
 
 	// Mind the alignment
@@ -142,10 +154,6 @@ private:
 	std::vector<VkBuffer> uniformBuffers;
 	std::vector<VkDeviceMemory> uniformBuffersMemory;
 
-	VkImage depthImage;
-	VkDeviceMemory depthImageMemory;
-	VkImageView depthImageView;
-
 // ===== Swapchain & Presentation =====
 	VkSwapchainKHR swapchain;
 	std::vector<VkImage> swapchainImages;
@@ -154,7 +162,7 @@ private:
 	VkExtent2D swapchainExtent;
 	VkFormat swapchainFormat;
 
-	const int MAX_FRAMES_IN_FLIGHT = 2;
+	const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 	uint32_t currentFrame = 0;
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector<VkSemaphore> renderCompleteSemaphores;
@@ -164,6 +172,14 @@ private:
 // ===== Shaders =====
 	VkShaderModule vertShaderModule;
 	VkShaderModule fragShaderModule;
+
+	VkImage textureImage;
+	VkDeviceMemory textureImageMemory;
+	VkImageView textureImageView;
+	VkSampler textureSampler;
+	VkImage depthImage;
+	VkDeviceMemory depthImageMemory;
+	VkImageView depthImageView;
 
 // ==============================================
 // Initialization
@@ -190,11 +206,19 @@ private:
 		CreateDescriptorSetLayout();
 		CreateGraphicsPipeline();
 		CreateCommandPools();
+	// Textures
+		CreateTextureImage();
+		CreateTextureImageView();
+		CreateTextureSampler();
+	// Depth buffer
 		CreateDepthResources();
+	// 
 		CreateFrameBuffers();
+	// Shader inputs
 		CreateVertexBuffer();
 		CreateIndexBuffer();
 		CreateUniformBuffers();
+	// 
 		CreateDescriptorPool();
 		CreateDescriptorSets();
 		CreateCommandBuffers();
@@ -314,6 +338,7 @@ private:
 		std::vector<VkExtensionProperties> supportedExtensions;
 		uint32_t qPropCount;
 		std::vector<VkQueueFamilyProperties> qProps;
+		VkPhysicalDeviceFeatures supportedFeatures;
 
 		int graphics = -1;
 		int transfer = -1;
@@ -328,6 +353,8 @@ private:
 			supportedExtensions.resize(supportedExtensionsCount);
 			vkEnumerateDeviceExtensionProperties(d, nullptr, &supportedExtensionsCount, supportedExtensions.data());
 
+			vkGetPhysicalDeviceFeatures(d, &supportedFeatures);
+
 			for (const auto& e : supportedExtensions)
 			{
 				requiredExtensions.erase(e.extensionName);
@@ -341,7 +368,7 @@ private:
 			transfer = GetQueueFamilyIndex(qProps, VK_QUEUE_TRANSFER_BIT);
 			present = GetPresentFamilyIndex(qProps, d);
 
-			if (requiredExtensions.empty() && graphics >= 0 && transfer >= 0 && present >= 0 && GetSurfaceProperties(d).isSuitable())
+			if (requiredExtensions.empty() && graphics >= 0 && transfer >= 0 && present >= 0 && GetSurfaceProperties(d).isSuitable() && supportedFeatures.samplerAnisotropy)
 			{
 				_graphicsIndex = graphics;
 				_transferIndex = transfer;
@@ -455,7 +482,7 @@ private:
 		createInfo.imageArrayLayers = 1;
 		createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-// TODO : Use only exclusive sharing & handle handoffs manually
+// TODO : Use only exclusive sharing & handle handoffs manually (using pipeline barriers)
 		if (device->queueFamilyIndices.graphics == device->queueFamilyIndices.present)
 		{
 			createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -479,28 +506,12 @@ private:
 		swapchainImageViews.resize(imageCount);
 		vkGetSwapchainImagesKHR(device->logicalDevice, swapchain, &imageCount, swapchainImages.data());
 
+		swapchainExtent = extent;
+		swapchainFormat = format.format;
+
 		for (uint32_t i = 0; i < imageCount; i++)
 		{
-			VkImageViewCreateInfo viewCreateInfo = {};
-			viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-			viewCreateInfo.image = swapchainImages[i];
-			viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-			viewCreateInfo.format = format.format;
-			viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-			viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-			viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-			viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-			viewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			viewCreateInfo.subresourceRange.layerCount = 1;
-			viewCreateInfo.subresourceRange.baseArrayLayer = 0;
-			viewCreateInfo.subresourceRange.levelCount = 1;
-			viewCreateInfo.subresourceRange.baseMipLevel = 0;
-
-			if (vkCreateImageView(device->logicalDevice, &viewCreateInfo, nullptr, &swapchainImageViews[i]) != VK_SUCCESS)
-				throw std::runtime_error("Failed to create swapchain image view");
-
-			swapchainExtent = extent;
-			swapchainFormat = format.format;
+			swapchainImageViews[i] = CreateImageView(swapchainImages[i], swapchainFormat, VK_IMAGE_ASPECT_COLOR_BIT);
 		}
 	}
 
@@ -640,17 +651,25 @@ private:
 // TODO : Generalize this
 	void CreateDescriptorSetLayout()
 	{
-		VkDescriptorSetLayoutBinding layoutBinding = {};
-		layoutBinding.binding = 0;
-		layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		layoutBinding.descriptorCount = 1;
-		layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-		layoutBinding.pImmutableSamplers = nullptr;
+		VkDescriptorSetLayoutBinding uboLayoutBinding = {};
+		uboLayoutBinding.binding = 0;
+		uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uboLayoutBinding.descriptorCount = 1;
+		uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		uboLayoutBinding.pImmutableSamplers = nullptr;
 
+		VkDescriptorSetLayoutBinding combinedSamplerLayoutBinding = {};
+		combinedSamplerLayoutBinding.binding = 1;
+		combinedSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		combinedSamplerLayoutBinding.descriptorCount = 1;
+		combinedSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		combinedSamplerLayoutBinding.pImmutableSamplers = nullptr;
+
+		std::array<VkDescriptorSetLayoutBinding, 2> bindings = {uboLayoutBinding, combinedSamplerLayoutBinding};
 		VkDescriptorSetLayoutCreateInfo createInfo = {};
 		createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		createInfo.bindingCount = 1;
-		createInfo.pBindings = &layoutBinding;
+		createInfo.bindingCount = (uint32_t)bindings.size();
+		createInfo.pBindings = bindings.data();
 
 		if (vkCreateDescriptorSetLayout(device->logicalDevice, &createInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
 			throw std::runtime_error("Failed to create a descriptor set layout");
@@ -663,8 +682,8 @@ private:
 		pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 
 	// ===== Shader Stage =====
-		std::vector<char> vertFile = LoadFile(".\\res\\default_vert.spv");
-		std::vector<char> fragFile = LoadFile(".\\res\\default_frag.spv");
+		std::vector<char> vertFile = LoadFile(".\\res\\shaders\\default_vert.spv");
+		std::vector<char> fragFile = LoadFile(".\\res\\shaders\\default_frag.spv");
 		vertShaderModule = CreateShaderModule(vertFile);
 		fragShaderModule = CreateShaderModule(fragFile);
 
@@ -685,7 +704,7 @@ private:
 
 	// ===== Vertex Input =====
 		VkVertexInputBindingDescription vertInputBinding = Vertex::GetBindingDescription();
-		std::array<VkVertexInputAttributeDescription, 2> vertInputAttribute = Vertex::GetAttributeDescription();
+		std::array<VkVertexInputAttributeDescription, 3> vertInputAttribute = Vertex::GetAttributeDescription();
 
 		VkPipelineVertexInputStateCreateInfo vertInputState = {};
 		vertInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -842,6 +861,7 @@ private:
 	}
 
 	// Create objects with instructions on rendering
+// TODO : Split like Begin/End Single Time Commands
 	void CreateCommandBuffers()
 	{
 		commandBuffers.resize((uint32_t)swapchainFrameBuffers.size());
@@ -1005,14 +1025,16 @@ private:
 
 	void CreateDescriptorPool()
 	{
-		VkDescriptorPoolSize poolSize = {};
-		poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		poolSize.descriptorCount = (uint32_t)swapchainImages.size();
+		std::array<VkDescriptorPoolSize, 2> poolSizes = {};
+		poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;				// UBO
+		poolSizes[0].descriptorCount = (uint32_t)swapchainImages.size();	// UBO
+		poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;		// combined sampler
+		poolSizes[1].descriptorCount = (uint32_t)swapchainImages.size();	// combined sampler
 
 		VkDescriptorPoolCreateInfo createInfo = {};
 		createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		createInfo.poolSizeCount = 1;
-		createInfo.pPoolSizes = &poolSize;
+		createInfo.poolSizeCount = (uint32_t)poolSizes.size();
+		createInfo.pPoolSizes = poolSizes.data();
 		createInfo.maxSets = (uint32_t)swapchainImages.size();
 
 		if (vkCreateDescriptorPool(device->logicalDevice, &createInfo, nullptr, &descriptorPool) != VK_SUCCESS)
@@ -1034,22 +1056,35 @@ private:
 
 		for (uint32_t i = 0; i < (uint32_t)swapchainImages.size(); i++)
 		{
-			VkDescriptorBufferInfo bufferInfo = {};
-			bufferInfo.offset = 0;
-			bufferInfo.range = sizeof(UniformBufferObject);
-			bufferInfo.buffer = uniformBuffers[i];
+			VkDescriptorBufferInfo uboInfo = {};
+			uboInfo.offset = 0;
+			uboInfo.range = sizeof(UniformBufferObject);
+			uboInfo.buffer = uniformBuffers[i];
 
-			VkWriteDescriptorSet descriptorWrite = {};
-			descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			descriptorWrite.dstSet = descriptorSets[i];
-			descriptorWrite.dstBinding = 0;
-			descriptorWrite.dstArrayElement = 0;
-			descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			descriptorWrite.descriptorCount = 1;
-			descriptorWrite.pBufferInfo = &bufferInfo;
-			descriptorWrite.pImageInfo = nullptr;
+			VkDescriptorImageInfo imageInfo = {};
+			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageInfo.imageView = textureImageView;
+			imageInfo.sampler = textureSampler;
 
-			vkUpdateDescriptorSets(device->logicalDevice, 1, &descriptorWrite, 0, nullptr);
+			std::array<VkWriteDescriptorSet, 2> descriptorWrites = {};
+			// UBO
+			descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrites[0].dstSet = descriptorSets[i];
+			descriptorWrites[0].dstBinding = 0;
+			descriptorWrites[0].dstArrayElement = 0;
+			descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			descriptorWrites[0].descriptorCount = 1;
+			descriptorWrites[0].pBufferInfo = &uboInfo;
+			// Combined sampler
+			descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrites[1].dstSet = descriptorSets[i];
+			descriptorWrites[1].dstBinding = 1;
+			descriptorWrites[1].dstArrayElement = 0;
+			descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			descriptorWrites[1].descriptorCount = 1;
+			descriptorWrites[1].pImageInfo = &imageInfo;
+
+			vkUpdateDescriptorSets(device->logicalDevice, (uint32_t)descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
 		}
 
 	}
@@ -1121,11 +1156,156 @@ private:
 		return imageView;
 	}
 
+	void CopyBufferToImage(VkBuffer _buffer, VkImage _image, uint32_t _width, uint32_t _height)
+	{
+		VkCommandBuffer commandBuffer = device->BeginSingleTimeCommands(device->transientPoolIndex);
+
+		VkBufferImageCopy region = {};
+		region.bufferOffset = 0;
+		region.bufferRowLength = 0;
+		region.bufferImageHeight = 0;
+		region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		region.imageSubresource.mipLevel = 0;
+		region.imageSubresource.baseArrayLayer = 0;
+		region.imageSubresource.layerCount = 1;
+		region.imageOffset = {0, 0, 0};
+		region.imageExtent = {_width, _height, 1};
+
+		vkCmdCopyBufferToImage(commandBuffer, _buffer, _image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+		device->EndSingleTimeCommands(commandBuffer, device->transientPoolIndex, device->transferQueue);
+	}
+
+	void CreateTextureImage()
+	{
+		int textureWidth, textureHeight, textureChannels;
+		stbi_uc* pixels = stbi_load(".\\res\\textures\\gold\\Metal_GoldOld_1K_albedo.png", &textureWidth, &textureHeight, &textureChannels, STBI_rgb_alpha);
+		VkDeviceSize imageSize = textureWidth * textureHeight * 4;
+
+		if (!pixels)
+			throw std::runtime_error("Failed to load texture image");
+
+		VkBuffer stagingBuffer;
+		VkDeviceMemory stagingBufferMemory;
+		device->CreateBuffer(
+			imageSize,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			stagingBuffer,
+			stagingBufferMemory
+		);
+
+		void* data;
+		vkMapMemory(device->logicalDevice, stagingBufferMemory, 0, imageSize, 0, &data);
+		memcpy(data, pixels, (size_t)imageSize);
+		vkUnmapMemory(device->logicalDevice, stagingBufferMemory);
+
+		stbi_image_free(pixels);
+
+		CreateImage(
+			(uint32_t)textureWidth,
+			(uint32_t)textureHeight,
+			VK_FORMAT_R8G8B8A8_SRGB,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			textureImage,
+			textureImageMemory
+		);
+
+		TransitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		CopyBufferToImage(stagingBuffer, textureImage, (uint32_t)textureWidth, (uint32_t)textureHeight);
+		TransitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		vkDestroyBuffer(device->logicalDevice, stagingBuffer, nullptr);
+		vkFreeMemory(device->logicalDevice, stagingBufferMemory, nullptr);
+	}
+
+	void CreateTextureImageView()
+	{
+		textureImageView = CreateImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+	}
+
+	void CreateTextureSampler()
+	{
+		VkSamplerCreateInfo createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		createInfo.magFilter = VK_FILTER_LINEAR;
+		createInfo.minFilter = VK_FILTER_LINEAR;
+		createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		createInfo.anisotropyEnable = VK_TRUE;
+		createInfo.maxAnisotropy = 16.0f;
+		createInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+		createInfo.unnormalizedCoordinates = VK_FALSE;
+		createInfo.compareEnable = VK_FALSE;
+		createInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+		createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		createInfo.mipLodBias = 0.0f;
+		createInfo.minLod = 0.0f;
+		createInfo.maxLod = 0.0f;
+
+		if (vkCreateSampler(device->logicalDevice, &createInfo, nullptr, &textureSampler) != VK_SUCCESS)
+			throw std::runtime_error("Failed to create texture sampler");
+	}
+
+	void TransitionImageLayout(VkImage _image, VkFormat _format, VkImageLayout _oldLayout, VkImageLayout _newLayout)
+	{
+		VkCommandBuffer commandBuffer = device->BeginSingleTimeCommands(graphicsCommandPoolIndex);
+
+		VkPipelineStageFlags srcStage;
+		VkPipelineStageFlags dstStage;
+
+		VkImageMemoryBarrier barrier = {};
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrier.oldLayout = _oldLayout;
+		barrier.newLayout = _newLayout;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // For Queue family transfer
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // For Queue family transfer
+		barrier.image = _image;
+		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrier.subresourceRange.baseMipLevel = 0;
+		barrier.subresourceRange.levelCount = 1;
+		barrier.subresourceRange.baseArrayLayer = 0;
+		barrier.subresourceRange.layerCount = 1;
+
+		if (_oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && _newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+		{
+			barrier.srcAccessMask = 0;
+			barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		}
+		else if (_oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && _newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+		{
+			barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		}
+		else
+			throw std::invalid_argument("Unsupported layout transition");
+
+		vkCmdPipelineBarrier(commandBuffer, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+		device->EndSingleTimeCommands(commandBuffer, graphicsCommandPoolIndex, device->graphicsQueue);
+	}
+
+
 	void CreateDepthResources()
 	{
 		VkFormat depthFormat = FindDepthFormat();
 
-		CreateImage(swapchainExtent.width, swapchainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
+		CreateImage(
+			swapchainExtent.width,
+			swapchainExtent.height,
+			depthFormat,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			depthImage,
+			depthImageMemory
+			);
 		depthImageView = CreateImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 	}
 
@@ -1297,6 +1477,11 @@ private:
 		CleanupSwapchain();
 
 		vkDestroyDescriptorSetLayout(device->logicalDevice, descriptorSetLayout, nullptr);
+
+		vkDestroySampler(device->logicalDevice, textureSampler, nullptr);
+		vkDestroyImageView(device->logicalDevice, textureImageView, nullptr);
+		vkDestroyImage(device->logicalDevice, textureImage, nullptr);
+		vkFreeMemory(device->logicalDevice, textureImageMemory, nullptr);
 
 		vkDestroyBuffer(device->logicalDevice, indexBuffer, nullptr);
 		vkFreeMemory(device->logicalDevice, indexBufferMemory, nullptr);
