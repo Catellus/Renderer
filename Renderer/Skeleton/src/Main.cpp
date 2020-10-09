@@ -96,8 +96,7 @@ private:
 	const std::string fragShaderDir = SHADER_DIR + "phongShading_frag.spv";
 	//const std::string testTextureDir = TEXTURE_DIR + "gold\\Metal_GoldOld_1K_albedo.png";
 	const std::string testTextureDir = TEXTURE_DIR + "viking_room.png";
-	//const std::string testModelDir = MODEL_DIR + "viking_room.obj";
-	const std::string testModelDir = MODEL_DIR + "Fire_Hydrant.obj";
+	const std::string testModelDir = MODEL_DIR + "SphereSmooth.obj";
 
 	struct SurfaceProperties
 	{
@@ -126,12 +125,6 @@ private:
 	//	{{ 0.2f  ,  0.65f, 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //11
 	//	{{-0.2f  ,  0.65f, 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //12
 	//	{{ 0.0f  ,  0.7f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //13
-
-	//	{{-0.8f, 0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f}}, //14
-	//	{{ 0.8f, 0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {1.0f, 1.0f}}, //15
-	//	{{ 0.8f,-0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f}}, //16
-	//	{{-0.8f,-0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}  //17
-
 	//};
 
 	//const std::vector<uint16_t> indices = {
@@ -142,8 +135,6 @@ private:
 	//	7, 9, 8, 8, 9, 10,
 	//	9, 11, 10, 10, 11, 12,
 	//	11, 13, 12,
-
-	//	15, 14, 16, 16, 14, 17
 	//};
 
 	// Mind the alignment
@@ -151,6 +142,7 @@ private:
 		alignas(16) glm::mat4 model;
 		alignas(16) glm::mat4 view;
 		alignas(16) glm::mat4 proj;
+		alignas(16) glm::vec3 camPosition;
 	};
 
 	struct LightInformation {
@@ -1587,10 +1579,11 @@ private:
 		float time = std::chrono::duration<float, std::chrono::seconds::period>(current - start).count();
 
 		UniformBufferObject ubo;
-		//ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(10.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		//ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		ubo.model = glm::mat4(1.0f);
-		//ubo.view = glm::lookAt(glm::vec3(1.5f,1.5f, 0.5f), glm::vec3(0.0f, 0.0f, 0.35f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.view = glm::lookAt(glm::vec3(6.0f,5.0f, 5.0f), glm::vec3(0.0f, 4.0f, 0.35f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.camPosition = { 2.0f, 2.0f, 2.0f };
+		ubo.view = glm::lookAt(ubo.camPosition, glm::vec3(0.0f, 0.0f, 0.35f), glm::vec3(0.0f, 0.0f, 1.0f));
+		//ubo.view = glm::lookAt(glm::vec3(6.0f,5.0f, 5.0f), glm::vec3(0.0f, 4.0f, 0.35f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.proj = glm::perspective(glm::radians(45.0f), swapchainExtent.width / (float)swapchainExtent.height, 0.1f, 100.0f);
 		ubo.proj[1][1] *= -1;
 
@@ -1601,7 +1594,8 @@ private:
 
 		LightInformation light = {};
 		light.color = {1.0f, 1.0f, 1.0f};
-		light.direction = {glm::sin(0.5f * time), glm::cos(0.5f * time), glm::sin(2 * time) * 0.5f};
+		//light.direction = {glm::sin(0.5f * time), glm::cos(0.5f * time), glm::sin(2 * time) * 0.5f};
+		light.direction = {0.0f, 1.1f, glm::sin(time) + 1.0f};
 
 		void* lightData;
 		vkMapMemory(device->logicalDevice, lightBuffersMemory[_currentFrame], 0, sizeof(LightInformation), 0, &lightData);
