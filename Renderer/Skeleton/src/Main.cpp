@@ -5,18 +5,71 @@
 #include <fstream>
 #include <array>
 #include <chrono>
+#include <unordered_map>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan.h>
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/hash.hpp>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tinyobjloader/tiny_obj_loader.h>
 
 #include "VulkanDevice.h"
+
+struct Vertex {
+	glm::vec3 position;
+	glm::vec3 color;
+	glm::vec2 texCoord;
+
+	static VkVertexInputBindingDescription GetBindingDescription() {
+		VkVertexInputBindingDescription bindingDescription = {};
+		bindingDescription.binding = 0;
+		bindingDescription.stride = sizeof(Vertex);
+		bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+		return bindingDescription;
+	}
+	static std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescription() {
+		std::array<VkVertexInputAttributeDescription, 3> attributeDescription = {};
+		// Position
+		attributeDescription[0].binding = 0;
+		attributeDescription[0].location = 0;
+		attributeDescription[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+		attributeDescription[0].offset = offsetof(Vertex, position);
+		// Color
+		attributeDescription[1].binding = 0;
+		attributeDescription[1].location = 1;
+		attributeDescription[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+		attributeDescription[1].offset = offsetof(Vertex, color);
+		// UV coord
+		attributeDescription[2].binding = 0;
+		attributeDescription[2].location = 2;
+		attributeDescription[2].format = VK_FORMAT_R32G32_SFLOAT;
+		attributeDescription[2].offset = offsetof(Vertex, texCoord);
+		return attributeDescription;
+	}
+
+	bool operator==(const Vertex& other) const
+	{
+		return position == other.position && color == other.color && texCoord == other.texCoord;
+	}
+};
+
+namespace std {
+	template<> struct hash<Vertex> {
+		size_t operator()(Vertex const& vertex) const {
+			return ((hash<glm::vec3>()(vertex.position) ^
+				(hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
+				(hash<glm::vec2>()(vertex.texCoord) << 1);
+		}
+	};
+}
 
 class Application
 {
@@ -26,6 +79,16 @@ class Application
 private:
 
 // ===== Predefined =====
+	const std::string SHADER_DIR  = ".\\res\\shaders\\";
+	const std::string TEXTURE_DIR = ".\\res\\textures\\";
+	const std::string MODEL_DIR   = ".\\res\\models\\";
+
+	const std::string vertShaderDir = SHADER_DIR + "default_vert.spv";
+	const std::string fragShaderDir = SHADER_DIR + "default_frag.spv";
+	//const std::string testTextureDir = TEXTURE_DIR + "gold\\Metal_GoldOld_1K_albedo.png";
+	const std::string testTextureDir = TEXTURE_DIR + "viking_room.png";
+	const std::string testModelDir = MODEL_DIR + "viking_room.obj";
+
 	struct SurfaceProperties
 	{
 		VkSurfaceCapabilitiesKHR capabilities;
@@ -38,73 +101,40 @@ private:
 		}
 	};
 
-	struct Vertex {
-		glm::vec3 position;
-		glm::vec3 color;
-		glm::vec2 texCoord;
+	//const std::vector<Vertex> verts = {
+	//	{{ 0.0f  , -0.65f, 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //0
+	//	{{ 0.1f  , -0.6f , 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //1
+	//	{{-0.1f  , -0.6f , 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //2
+	//	{{ 0.25f , -0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //3
+	//	{{-0.25f , -0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //4
+	//	{{ 0.35f ,  0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //5
+	//	{{-0.35f ,  0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //6
+	//	{{ 0.4f  ,  0.5f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //7
+	//	{{-0.4f  ,  0.5f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //8
+	//	{{ 0.325f,  0.6f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //9
+	//	{{-0.325f,  0.6f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //10
+	//	{{ 0.2f  ,  0.65f, 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //11
+	//	{{-0.2f  ,  0.65f, 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //12
+	//	{{ 0.0f  ,  0.7f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //13
 
-		static VkVertexInputBindingDescription GetBindingDescription() {
-			VkVertexInputBindingDescription bindingDescription = {};
-			bindingDescription.binding = 0;
-			bindingDescription.stride = sizeof(Vertex);
-			bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-			return bindingDescription;
-		}
-		static std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescription() {
-			std::array<VkVertexInputAttributeDescription, 3> attributeDescription = {};
-			// Position
-			attributeDescription[0].binding = 0;
-			attributeDescription[0].location = 0;
-			attributeDescription[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-			attributeDescription[0].offset = offsetof(Vertex, position);
-			// Color
-			attributeDescription[1].binding = 0;
-			attributeDescription[1].location = 1;
-			attributeDescription[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-			attributeDescription[1].offset = offsetof(Vertex, color);
-			// UV coord
-			attributeDescription[2].binding = 0;
-			attributeDescription[2].location = 2;
-			attributeDescription[2].format = VK_FORMAT_R32G32_SFLOAT;
-			attributeDescription[2].offset = offsetof(Vertex, texCoord);
-			return attributeDescription;
-		}
-	};
+	//	{{-0.8f, 0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f}}, //14
+	//	{{ 0.8f, 0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {1.0f, 1.0f}}, //15
+	//	{{ 0.8f,-0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f}}, //16
+	//	{{-0.8f,-0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}  //17
 
-	const std::vector<Vertex> verts = {
-		{{ 0.0f  , -0.65f, 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //0
-		{{ 0.1f  , -0.6f , 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //1
-		{{-0.1f  , -0.6f , 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //2
-		{{ 0.25f , -0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //3
-		{{-0.25f , -0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //4
-		{{ 0.35f ,  0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //5
-		{{-0.35f ,  0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //6
-		{{ 0.4f  ,  0.5f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //7
-		{{-0.4f  ,  0.5f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //8
-		{{ 0.325f,  0.6f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //9
-		{{-0.325f,  0.6f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //10
-		{{ 0.2f  ,  0.65f, 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //11
-		{{-0.2f  ,  0.65f, 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //12
-		{{ 0.0f  ,  0.7f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //13
+	//};
 
-		{{-0.8f, 0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f}}, //14
-		{{ 0.8f, 0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {1.0f, 1.0f}}, //15
-		{{ 0.8f,-0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f}}, //16
-		{{-0.8f,-0.8f, -0.25f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}  //17
+	//const std::vector<uint16_t> indices = {
+	//	0, 1, 2,
+	//	2, 1, 3, 3, 4, 2,
+	//	4, 3, 5, 5, 6, 4,
+	//	5, 7, 6, 6, 7, 8,
+	//	7, 9, 8, 8, 9, 10,
+	//	9, 11, 10, 10, 11, 12,
+	//	11, 13, 12,
 
-	};
-
-	const std::vector<uint16_t> indices = {
-		0, 1, 2,
-		2, 1, 3, 3, 4, 2,
-		4, 3, 5, 5, 6, 4,
-		5, 7, 6, 6, 7, 8,
-		7, 9, 8, 8, 9, 10,
-		9, 11, 10, 10, 11, 12,
-		11, 13, 12,
-
-		15, 14, 16, 16, 14, 17
-	};
+	//	15, 14, 16, 16, 14, 17
+	//};
 
 	// Mind the alignment
 	struct UniformBufferObject {
@@ -147,10 +177,13 @@ private:
 	uint32_t graphicsCommandPoolIndex;
 	std::vector<VkCommandBuffer> commandBuffers;
 
+	std::vector<Vertex> vertices;
 	VkBuffer vertexBuffer;
 	VkDeviceMemory vertexBufferMemory;
+	std::vector<uint32_t> indices;
 	VkBuffer indexBuffer;
 	VkDeviceMemory indexBufferMemory;
+
 	std::vector<VkBuffer> uniformBuffers;
 	std::vector<VkDeviceMemory> uniformBuffersMemory;
 
@@ -214,6 +247,8 @@ private:
 		CreateDepthResources();
 	// 
 		CreateFrameBuffers();
+	// Model
+		LoadTestModel();
 	// Shader inputs
 		CreateVertexBuffer();
 		CreateIndexBuffer();
@@ -682,8 +717,8 @@ private:
 		pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 
 	// ===== Shader Stage =====
-		std::vector<char> vertFile = LoadFile(".\\res\\shaders\\default_vert.spv");
-		std::vector<char> fragFile = LoadFile(".\\res\\shaders\\default_frag.spv");
+		std::vector<char> vertFile = LoadFile(vertShaderDir.c_str());
+		std::vector<char> fragFile = LoadFile(fragShaderDir.c_str());
 		vertShaderModule = CreateShaderModule(vertFile);
 		fragShaderModule = CreateShaderModule(fragFile);
 
@@ -902,7 +937,7 @@ private:
 			VkBuffer vertBuffers[] = { vertexBuffer };
 			VkDeviceSize offsets[] = { 0 };
 			vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertBuffers, offsets);
-			vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+			vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[i], 0, nullptr);
 			vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
@@ -941,7 +976,7 @@ private:
 	// Copies the Verts vector into the buffer
 	void CreateVertexBuffer()
 	{
-		VkDeviceSize bufferSize = sizeof(verts[0]) * (uint32_t)verts.size();
+		VkDeviceSize bufferSize = sizeof(vertices[0]) * (uint32_t)vertices.size();
 
 		VkBuffer stagingBuffer;
 		VkDeviceMemory stagingBufferMemory;
@@ -955,7 +990,7 @@ private:
 
 		void* data;
 		vkMapMemory(device->logicalDevice, stagingBufferMemory, 0, bufferSize, 0, &data);
-		memcpy(data, verts.data(), (uint32_t)bufferSize);
+		memcpy(data, vertices.data(), (uint32_t)bufferSize);
 		vkUnmapMemory(device->logicalDevice, stagingBufferMemory);
 
 		device->CreateBuffer(
@@ -1179,7 +1214,7 @@ private:
 	void CreateTextureImage()
 	{
 		int textureWidth, textureHeight, textureChannels;
-		stbi_uc* pixels = stbi_load(".\\res\\textures\\gold\\Metal_GoldOld_1K_albedo.png", &textureWidth, &textureHeight, &textureChannels, STBI_rgb_alpha);
+		stbi_uc* pixels = stbi_load(testTextureDir.c_str(), &textureWidth, &textureHeight, &textureChannels, STBI_rgb_alpha);
 		VkDeviceSize imageSize = textureWidth * textureHeight * 4;
 
 		if (!pixels)
@@ -1436,6 +1471,46 @@ private:
 		vkMapMemory(device->logicalDevice, uniformBuffersMemory[_currentFrame], 0, sizeof(ubo), 0, &data);
 		memcpy(data, &ubo, sizeof(ubo));
 		vkUnmapMemory(device->logicalDevice, uniformBuffersMemory[_currentFrame]);
+	}
+
+	void LoadTestModel()
+	{
+		tinyobj::attrib_t attrib;
+		std::vector<tinyobj::shape_t> shapes;
+		std::vector<tinyobj::material_t> materials;
+		std::string warn, err;
+		if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, testModelDir.c_str()))
+			throw std::runtime_error(warn + err);
+
+		std::unordered_map<Vertex, uint32_t> uniqueVerts = {};
+
+		for (const auto& shape : shapes)
+		{
+			for (const auto& index : shape.mesh.indices)
+			{
+				Vertex vert{};
+
+				vert.position = {
+					attrib.vertices[3 * index.vertex_index + 0],
+					attrib.vertices[3 * index.vertex_index + 1],
+					attrib.vertices[3 * index.vertex_index + 2]
+				};
+
+				vert.texCoord = {
+					attrib.texcoords[2 * index.texcoord_index + 0],
+					1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+				};
+
+				vert.color = {1.0f, 1.0f, 1.0f};
+
+				if (uniqueVerts.count(vert) == 0)
+				{
+					uniqueVerts[vert] = (uint32_t)vertices.size();
+					vertices.push_back(vert);
+				}
+				indices.push_back(uniqueVerts[vert]);
+			}
+		}
 	}
 
 // ==============================================
