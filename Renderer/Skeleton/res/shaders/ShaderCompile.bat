@@ -18,7 +18,9 @@ GOTO:EOF
 	set ext=%ext:.=%
 	set finalName=%name%_%ext%
 	%d%Bin32\glslc.exe %~1 -o %finalName%.spv
+	echo ==============================
 	echo %finalName% compile successful
+	echo ==============================
 	::copy %finalName%.spv ..\..\bin\Release\x64\res\%finalName%.spv
 	GOTO:EOF
 	
