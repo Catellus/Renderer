@@ -89,6 +89,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\Camera.h" />
     <ClCompile Include="src\Main.cpp" />
   </ItemGroup>
   <ItemGroup>

@@ -12,6 +12,7 @@
 #include <vulkan/vulkan.h>
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+//#define GLM_FORCE_LEFT_HANDED // Sort of breaks GLSL (ALl Zs need to be flipped)
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -147,16 +148,8 @@ private:
 
 	struct LightInformation {
 		alignas(16) glm::vec3 color;
-		alignas(16) glm::vec3 direction;
+		alignas(16) glm::vec3 position;
 	};
-
-	// Describe the layout of the descriptor set				(CreateDescriptorSetLayout)
-	// Attach the descriptor set layout to the pipeline layout	(CreatePipelineLayout)
-	//		Create the buffer to store data						(CreateUniformBuffers)
-	// Specify the size of the uniform							(CreateDescriptorPool)
-	// Write basic information into the descriptor sets			(CreateDescriptorSets)
-	// Bind descriptor set in a command buffer					(CreateCommandBUffers)
-
 
 	std::vector<const char*> instanceLayers = { "VK_LAYER_KHRONOS_validation" };
 	std::vector<const char*> instanceExtensions = {};
@@ -238,6 +231,17 @@ public:
 	// Handle the lifetime of the application
 	void Run()
 	{
+		//glm::vec4 vec(1.0f, 0.0f, 0.0f, 1.0f);
+		//glm::mat4 trans(1.0f);
+		////trans = glm::translate(trans, glm::vec3(1.0f, 1.0f, 0.0f));
+		//trans = glm::rotate(trans, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		//trans = glm::scale(trans, glm::vec3(0.5f, 0.5f, 0.5f));
+		//vec = trans * vec;
+
+		//std::printf("(%f, %f, %f)\n", vec.r, vec.g, vec.b);
+
+		
+
 		Initialize();
 		MainLoop();
 		Cleanup();
@@ -322,6 +326,10 @@ private:
 
 		glfwSetWindowUserPointer(window, this);
 		glfwSetFramebufferSizeCallback(window, WindowResizeCallback);
+		glfwSetCursorPosCallback(window, mouseMovementCallback);
+		// "Capture" the cursor when the window has focus
+		// Locks the cursor to the window & makes it invisible
+		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	}
 
 	// Called when the GLFW window is resized
@@ -330,6 +338,26 @@ private:
 		auto app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(_window));
 		app->windowResized = true;
 	}
+
+	const double mouseSensativity = 0.1f;
+	static void mouseMovementCallback(GLFWwindow* _window, double _x, double _y)
+	{
+		auto app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(_window));
+
+		static double previousX = _x;
+		static double previousY = _y;
+
+		app->cam.yaw   += (_x - previousX) * app->mouseSensativity;
+		app->cam.pitch += (previousY - _y) * app->mouseSensativity;
+		if (app->cam.pitch > 89.0f)
+			app->cam.pitch = 89.0f;
+		if (app->cam.pitch < -89.0f)
+			app->cam.pitch = -89.0f;
+
+		previousX = _x;
+		previousY = _y;
+	}
+
 
 	void CreateSurface()
 	{
@@ -983,6 +1011,13 @@ private:
 // Uniform Buffers
 // ==============================================
 
+	// Describe the layout of the descriptor set				(CreateDescriptorSetLayout)
+	// Attach the descriptor set layout to the pipeline layout	(CreatePipelineLayout)
+	//		Create the buffer to store data						(CreateUniformBuffers)
+	// Specify the size of the uniform							(CreateDescriptorPool)
+	// Write basic information into the descriptor sets			(CreateDescriptorSets)
+	// Bind descriptor set in a command buffer					(CreateCommandBUffers)
+
 	// Define --
 // TODO : Generalize this
 	void CreateDescriptorSetLayout()
@@ -1494,17 +1529,54 @@ private:
 // Main Loop
 // ==============================================
 
+	#include "Camera.h"
+	Camera cam;
+
+	struct ApplicationTimeInformation {
+		float totalTime;
+		float deltaTime;
+	} time;
+
 	// Core functionality
 	// Loops until window is closed
 	void MainLoop()
 	{
+		auto start = std::chrono::high_resolution_clock::now();
+		auto old = start;
+
 		while (!glfwWindowShouldClose(window))
 		{
+			ProcessInput();
 			RenderFrame();
 			glfwPollEvents();
-		}
 
+			auto current = std::chrono::high_resolution_clock::now();
+			time.deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(current - old).count();
+			time.totalTime = std::chrono::duration<float, std::chrono::seconds::period>(current - start).count();
+			old = current;
+		}
 		vkDeviceWaitIdle(device->logicalDevice);
+	}
+
+	void ProcessInput()
+	{
+		const float camSpeed = 0.5f;
+		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+			cam.cameraPosition += cam.cameraFront * camSpeed * time.deltaTime;
+		if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+			cam.cameraPosition -= cam.cameraFront * camSpeed * time.deltaTime;
+		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+			cam.cameraPosition += cam.getRight() * camSpeed * time.deltaTime;
+		if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+			cam.cameraPosition -= cam.getRight() * camSpeed * time.deltaTime;
+		if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
+			cam.cameraPosition += cam.cameraUp * camSpeed * time.deltaTime;
+		if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
+			cam.cameraPosition -= cam.cameraUp * camSpeed * time.deltaTime;
+		if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
+		cam.UpdateCameraView();
 	}
 
 	// Handles rendering and presentation to the window
@@ -1574,33 +1646,35 @@ private:
 	// Updates the MVP matrix for this frame
 	void UpdateUniformBuffer(uint32_t _currentFrame)
 	{
-		static auto start = std::chrono::high_resolution_clock::now();
-		auto current = std::chrono::high_resolution_clock::now();
-		float time = std::chrono::duration<float, std::chrono::seconds::period>(current - start).count();
-
+	// UBO
 		UniformBufferObject ubo;
-		//ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+		ubo.view = cam.view;
+		ubo.camPosition = cam.cameraPosition;
+
+		//ubo.model = glm::rotate(glm::mat4(1.0f), time.totalTime * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		ubo.model = glm::mat4(1.0f);
-		ubo.camPosition = { 2.0f, 2.0f, 2.0f };
-		ubo.view = glm::lookAt(ubo.camPosition, glm::vec3(0.0f, 0.0f, 0.35f), glm::vec3(0.0f, 0.0f, 1.0f));
-		//ubo.view = glm::lookAt(glm::vec3(6.0f,5.0f, 5.0f), glm::vec3(0.0f, 4.0f, 0.35f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.proj = glm::perspective(glm::radians(45.0f), swapchainExtent.width / (float)swapchainExtent.height, 0.1f, 100.0f);
 		ubo.proj[1][1] *= -1;
 
-		void* data;
-		vkMapMemory(device->logicalDevice, uboBuffersMemory[_currentFrame], 0, sizeof(ubo), 0, &data);
-		memcpy(data, &ubo, sizeof(ubo));
-		vkUnmapMemory(device->logicalDevice, uboBuffersMemory[_currentFrame]);
+		CopyDataToBufferMemory(&ubo, sizeof(ubo), uboBuffersMemory[_currentFrame]);
 
+	// LIGHT
 		LightInformation light = {};
 		light.color = {1.0f, 1.0f, 1.0f};
-		//light.direction = {glm::sin(0.5f * time), glm::cos(0.5f * time), glm::sin(2 * time) * 0.5f};
-		light.direction = {0.0f, 1.1f, glm::sin(time) + 1.0f};
+		//light.position = {0.0f, glm::sin(time.totalTime), (glm::cos(time.totalTime) * 0.5f + 1.5f)};
+		light.position = {0.0f, 0.0f, 3.0f};
 
-		void* lightData;
-		vkMapMemory(device->logicalDevice, lightBuffersMemory[_currentFrame], 0, sizeof(LightInformation), 0, &lightData);
-		memcpy(lightData, &light, sizeof(LightInformation));
-		vkUnmapMemory(device->logicalDevice, lightBuffersMemory[_currentFrame]);
+		CopyDataToBufferMemory(&light, sizeof(LightInformation), lightBuffersMemory[_currentFrame]);
+	}
+
+	// Maps buffer memory and copies input data to it
+	void CopyDataToBufferMemory(void* _srcData, VkDeviceSize _size, VkDeviceMemory& _memory, VkDeviceSize _offset = 0, VkMemoryMapFlags _flags = 0)
+	{
+		void* tmpData;
+		vkMapMemory(device->logicalDevice, _memory, _offset, _size, _flags, &tmpData);
+		memcpy(tmpData, _srcData, _size);
+		vkUnmapMemory(device->logicalDevice, _memory);
 	}
 
 // ==============================================
