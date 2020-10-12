@@ -42,9 +42,9 @@ public:
 		//std::printf("%4lf, %4lf\n", pitch, yaw);
 
 		//cameraPosition = glm::vec3(glm::sin(_time * 0.5f) * 3, 0.0f, glm::cos(_time * 0.5f) * 3);
-		cameraFront.r = (float)glm::cos(glm::radians(yaw)) * glm::cos(glm::radians(pitch));
+		cameraFront.r = (float)(glm::cos(glm::radians(yaw)) * glm::cos(glm::radians(pitch)));
 		cameraFront.y = (float)glm::sin(glm::radians(pitch));
-		cameraFront.b = (float)glm::sin(glm::radians(yaw)) * glm::cos(glm::radians(pitch));
+		cameraFront.b = (float)(glm::sin(glm::radians(yaw)) * glm::cos(glm::radians(pitch)));
 		cameraFront = glm::normalize(cameraFront);
 
 		//std::printf("%4f, %4f, %4f\n", cameraFront.r, cameraFront.g, cameraFront.b);

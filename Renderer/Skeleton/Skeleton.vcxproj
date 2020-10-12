@@ -93,6 +93,8 @@
     <ClCompile Include="src\Main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\FileLoader.h" />
+    <ClInclude Include="src\Mesh.h" />
     <ClInclude Include="src\VulkanDevice.h" />
   </ItemGroup>
   <ItemGroup>
