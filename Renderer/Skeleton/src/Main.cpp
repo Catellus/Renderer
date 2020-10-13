@@ -21,8 +21,9 @@
 #include <stb/stb_image.h>
 
 #include "VulkanDevice.h"
-#include "FileLoader.h"
 #include "Mesh.h"
+#include "Object.h"
+#include "Initializers.h"
 
 // TODO : Fix normal re-calculation (Normals spiraling @ top/bottom of sphere)
 
@@ -43,6 +44,7 @@ private:
 	const std::string albedoTextureDir = TEXTURE_DIR + "White.png";
 	const std::string normalTextureDir = TEXTURE_DIR + "gold\\Metal_GoldOld_1K_normal.png";
 	const std::string testModelDir = MODEL_DIR + "SphereSmooth.obj";
+	const std::string testCubeDir = MODEL_DIR + "Cube.obj";
 	Mesh testMesh;
 
 	struct SurfaceProperties
@@ -55,19 +57,6 @@ private:
 		{
 			return formats.size() && presentModes.size();
 		}
-	};
-
-	// Mind the alignment
-	struct UniformBufferObject {
-		alignas(16) glm::mat4 model;
-		alignas(16) glm::mat4 view;
-		alignas(16) glm::mat4 proj;
-		alignas(16) glm::vec3 camPosition;
-	};
-
-	struct LightInformation {
-		alignas(16) glm::vec3 color;
-		alignas(16) glm::vec3 position;
 	};
 
 	std::vector<const char*> instanceLayers = { "VK_LAYER_KHRONOS_validation" };
@@ -97,24 +86,8 @@ private:
 	VkPipelineLayout pipelineLayout;
 	VkPipeline pipeline;
 
-	VkDescriptorSetLayout descriptorSetLayout;
-	VkDescriptorPool descriptorPool;
-	std::vector<VkDescriptorSet> descriptorSets;
-
 	uint32_t graphicsCommandPoolIndex;
 	std::vector<VkCommandBuffer> commandBuffers;
-
-	std::vector<Vertex> vertices;
-	VkBuffer vertexBuffer;
-	VkDeviceMemory vertexBufferMemory;
-	std::vector<uint32_t> indices;
-	VkBuffer indexBuffer;
-	VkDeviceMemory indexBufferMemory;
-
-	std::vector<VkBuffer> uboBuffers;
-	std::vector<VkDeviceMemory> uboBuffersMemory;
-	std::vector<VkBuffer> lightBuffers;
-	std::vector<VkDeviceMemory> lightBuffersMemory;
 
 // ===== Swapchain & Presentation =====
 	VkSwapchainKHR swapchain;
@@ -174,26 +147,25 @@ private:
 		CreateRenderpass();
 		CreateDescriptorSetLayout();
 		CreateGraphicsPipeline();
+		CreateDescriptorPool(2);
 		CreateCommandPools();
-	// Textures
+		// Depth buffer
+		CreateDepthResources();
+		CreateFrameBuffers();
+		CreateSyncObjects();
+
 		CreateTexture(albedoTextureDir, albedoImage, albedoImageMemory, albedoImageView, albedoImageSampler);
 		CreateTexture(normalTextureDir, normalImage, normalImageMemory, normalImageView, normalImageSampler);
-	// Depth buffer
-		CreateDepthResources();
-	// 
-		CreateFrameBuffers();
-	// Model
-		testMesh = LoadModel(testModelDir);
-		std::printf("%s\n\tVerts: %d\n\tIndices: %d\n", testModelDir.c_str(), (uint32_t)testMesh.vertices.size(), (uint32_t)testMesh.indices.size());
-	// Shader inputs
-		CreateVertexBuffer();
-		CreateIndexBuffer();
-		CreateUniformBuffers();
-	// 
-		CreateDescriptorPool();
-		CreateDescriptorSets();
-		CreateCommandBuffers();
-		CreateSyncObjects();
+
+		testObject = new Object(device, testModelDir.c_str());
+		testObject->CreateUniformBuffers();
+		testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
+
+		testCube = new Object(device, testCubeDir.c_str());
+		testCube->CreateUniformBuffers();
+		testCube->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
+
+		commandBuffers = CrateCommandBuffers();
 	}
 
 	// Handles changes to the swapchain for continued rendering
@@ -216,11 +188,97 @@ private:
 		CreateGraphicsPipeline();
 		CreateDepthResources();
 		CreateFrameBuffers();
-		CreateUniformBuffers();
-		CreateDescriptorPool();
-		CreateDescriptorSets();
-		CreateCommandBuffers();
+		CreateDescriptorPool(2);
+		testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
+		testCube->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
+		commandBuffers = CrateCommandBuffers();
 	}
+
+	Object* testObject;
+	Object* testCube;
+
+	#pragma region Object
+
+	// Mind the alignment
+	struct UniformBufferObject {
+		alignas(16) glm::mat4 model;
+		alignas(16) glm::mat4 view;
+		alignas(16) glm::mat4 proj;
+		alignas(16) glm::vec3 camPosition;
+	};
+
+	struct LightInformation {
+		alignas(16) glm::vec3 color;
+		alignas(16) glm::vec3 position;
+	};
+
+	VkDescriptorSetLayout descriptorSetLayout;
+	VkDescriptorPool descriptorPool;
+
+// ==============================================
+// Uniform Buffers
+// ==============================================
+
+	// Describe the layout of the descriptor set				(CreateDescriptorSetLayout)
+	// Attach the descriptor set layout to the pipeline layout	(CreatePipelineLayout)
+	//		Create the buffer to store data						(CreateUniformBuffers)
+	// Specify the size of the uniform							(CreateDescriptorPool)
+	// Write basic information into the descriptor sets			(CreateDescriptorSets)
+	// Bind descriptor set in a command buffer					(CreateCommandBUffers)
+
+	void CreateDescriptorSetLayout()
+	{
+		std::vector<VkDescriptorSetLayoutBinding> layoutBindings = {
+			skel::initializers::DescriptorSetLyoutBinding(
+				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				VK_SHADER_STAGE_VERTEX_BIT,
+				0),
+			skel::initializers::DescriptorSetLyoutBinding(
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				VK_SHADER_STAGE_FRAGMENT_BIT,
+				1),
+			skel::initializers::DescriptorSetLyoutBinding(
+				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				VK_SHADER_STAGE_FRAGMENT_BIT,
+				2),
+			skel::initializers::DescriptorSetLyoutBinding(
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				VK_SHADER_STAGE_FRAGMENT_BIT,
+				3)
+		};
+
+		VkDescriptorSetLayoutCreateInfo createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		createInfo.bindingCount = (uint32_t)layoutBindings.size();
+		createInfo.pBindings = layoutBindings.data();
+
+		if (vkCreateDescriptorSetLayout(device->logicalDevice, &createInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
+			throw std::runtime_error("Failed to create a descriptor set layout");
+	}
+
+	// Pool sizes are determined by the shaders in the pipeline
+	void CreateDescriptorPool(uint32_t _objectCount)
+	{
+		std::vector<VkDescriptorPoolSize> poolSizes = {
+			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),			// UBO
+			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount),	// Albeto
+			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),			// Light
+			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount)	// Normal
+		};
+
+		VkDescriptorPoolCreateInfo createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		createInfo.poolSizeCount = (uint32_t)poolSizes.size();
+		createInfo.pPoolSizes = poolSizes.data();
+		createInfo.maxSets = _objectCount;
+
+		if (vkCreateDescriptorPool(device->logicalDevice, &createInfo, nullptr, &descriptorPool) != VK_SUCCESS)
+			throw std::runtime_error("Failed to create descriptor pool");
+	}
+	#pragma endregion
+
+
+
 
 	// Creates a GLFW window pointer
 	void CreateWindow()
@@ -850,312 +908,6 @@ private:
 		}
 	}
 
-	// Creates a buffer in GPU memory for the Verts vector
-	// Copies the Verts vector into the buffer
-	void CreateVertexBuffer()
-	{
-		VkDeviceSize bufferSize = sizeof(testMesh.vertices[0]) * (uint32_t)testMesh.vertices.size();
-
-		VkBuffer stagingBuffer;
-		VkDeviceMemory stagingBufferMemory;
-		device->CreateBuffer(
-			bufferSize,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			stagingBuffer,
-			stagingBufferMemory
-		);
-
-		void* data;
-		vkMapMemory(device->logicalDevice, stagingBufferMemory, 0, bufferSize, 0, &data);
-		memcpy(data, testMesh.vertices.data(), (uint32_t)bufferSize);
-		vkUnmapMemory(device->logicalDevice, stagingBufferMemory);
-		//CopyDataToBufferMemory(testMesh.vertices.data(), bufferSize);
-
-		device->CreateBuffer(
-			bufferSize,
-			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-			vertexBuffer,
-			vertexBufferMemory
-		);
-
-		device->CopyBuffer(stagingBuffer, vertexBuffer, bufferSize);
-
-		vkDestroyBuffer(device->logicalDevice, stagingBuffer, nullptr);
-		vkFreeMemory(device->logicalDevice, stagingBufferMemory, nullptr);
-	}
-
-	// Creates a buffer in GPU memory for the Indices vector
-	// Copies the Indices vector into the buffer
-	void CreateIndexBuffer()
-	{
-		VkDeviceSize bufferSize = sizeof(testMesh.indices[0]) * (uint32_t)testMesh.indices.size();
-
-		VkBuffer stagingBuffer;
-		VkDeviceMemory stagingBufferMemory;
-		device->CreateBuffer(
-			bufferSize,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			stagingBuffer,
-			stagingBufferMemory
-		);
-
-		void* data;
-		vkMapMemory(device->logicalDevice, stagingBufferMemory, 0, bufferSize, 0, &data);
-		memcpy(data, testMesh.indices.data(), (uint32_t)bufferSize);
-		vkUnmapMemory(device->logicalDevice, stagingBufferMemory);
-
-		device->CreateBuffer(
-			bufferSize,
-			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-			indexBuffer,
-			indexBufferMemory
-		);
-
-		device->CopyBuffer(stagingBuffer, indexBuffer, bufferSize);
-
-		vkDestroyBuffer(device->logicalDevice, stagingBuffer, nullptr);
-		vkFreeMemory(device->logicalDevice, stagingBufferMemory, nullptr);
-	}
-
-// ==============================================
-// Uniform Buffers
-// ==============================================
-
-	// Describe the layout of the descriptor set				(CreateDescriptorSetLayout)
-	// Attach the descriptor set layout to the pipeline layout	(CreatePipelineLayout)
-	//		Create the buffer to store data						(CreateUniformBuffers)
-	// Specify the size of the uniform							(CreateDescriptorPool)
-	// Write basic information into the descriptor sets			(CreateDescriptorSets)
-	// Bind descriptor set in a command buffer					(CreateCommandBUffers)
-
-	// Define --
-// TODO : Generalize this
-	void CreateDescriptorSetLayout()
-	{
-		VkDescriptorSetLayoutBinding uboLayoutBinding = {};
-		uboLayoutBinding.binding = 0;
-		uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		uboLayoutBinding.descriptorCount = 1;
-		uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-		uboLayoutBinding.pImmutableSamplers = nullptr;
-
-		VkDescriptorSetLayoutBinding albedoMapLayoutBinding = {};
-		albedoMapLayoutBinding.binding = 1;
-		albedoMapLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		albedoMapLayoutBinding.descriptorCount = 1;
-		albedoMapLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-		albedoMapLayoutBinding.pImmutableSamplers = nullptr;
-
-		VkDescriptorSetLayoutBinding lightLayoutBinding = {};
-		lightLayoutBinding.binding = 2;
-		lightLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		lightLayoutBinding.descriptorCount = 1;
-		lightLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-		lightLayoutBinding.pImmutableSamplers = nullptr;
-
-		VkDescriptorSetLayoutBinding normalMapLayoutBinding = {};
-		normalMapLayoutBinding.binding = 3;
-		normalMapLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		normalMapLayoutBinding.descriptorCount = 1;
-		normalMapLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-		normalMapLayoutBinding.pImmutableSamplers = nullptr;
-
-		std::array<VkDescriptorSetLayoutBinding, 4> bindings = { uboLayoutBinding, albedoMapLayoutBinding, lightLayoutBinding, normalMapLayoutBinding };
-		VkDescriptorSetLayoutCreateInfo createInfo = {};
-		createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		createInfo.bindingCount = (uint32_t)bindings.size();
-		createInfo.pBindings = bindings.data();
-
-		if (vkCreateDescriptorSetLayout(device->logicalDevice, &createInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
-			throw std::runtime_error("Failed to create a descriptor set layout");
-	}
-
-	void CreateUniformBuffers()
-	{
-		VkDeviceSize uboBufferSize = sizeof(UniformBufferObject);
-		uboBuffers.resize((uint32_t)swapchainImages.size());
-		uboBuffersMemory.resize((uint32_t)swapchainImages.size());
-
-		VkDeviceSize lightBufferSize = sizeof(LightInformation);
-		lightBuffers.resize((uint32_t)swapchainImages.size());
-		lightBuffersMemory.resize((uint32_t)swapchainImages.size());
-
-		for (uint32_t i = 0; i < (uint32_t)swapchainImages.size(); i++)
-		{
-			device->CreateBuffer(
-				uboBufferSize,
-				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-				uboBuffers[i],
-				uboBuffersMemory[i]
-			);
-
-			device->CreateBuffer(
-				lightBufferSize,
-				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-				lightBuffers[i],
-				lightBuffersMemory[i]
-			);
-		}
-	}
-
-	void CreateDescriptorPool()
-	{
-		std::array<VkDescriptorPoolSize, 4> poolSizes = {};
-		poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;				// UBO
-		poolSizes[0].descriptorCount = (uint32_t)swapchainImages.size();	// UBO
-		poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;		// albedo map sampler
-		poolSizes[1].descriptorCount = (uint32_t)swapchainImages.size();	// albedo map sampler
-		poolSizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;				// Light Information
-		poolSizes[2].descriptorCount = (uint32_t)swapchainImages.size();	// Light Information
-		poolSizes[3].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;		// normal map sampler
-		poolSizes[3].descriptorCount = (uint32_t)swapchainImages.size();	// normal map sampler
-
-		VkDescriptorPoolCreateInfo createInfo = {};
-		createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		createInfo.poolSizeCount = (uint32_t)poolSizes.size();
-		createInfo.pPoolSizes = poolSizes.data();
-		createInfo.maxSets = (uint32_t)swapchainImages.size();
-
-		if (vkCreateDescriptorPool(device->logicalDevice, &createInfo, nullptr, &descriptorPool) != VK_SUCCESS)
-			throw std::runtime_error("Failed to create descriptor pool");
-	}
-
-	void CreateDescriptorSets()
-	{
-		std::vector<VkDescriptorSetLayout> layouts((uint32_t)swapchainImages.size(), descriptorSetLayout);
-		VkDescriptorSetAllocateInfo allocInfo = {};
-		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		allocInfo.descriptorPool = descriptorPool;
-		allocInfo.descriptorSetCount = (uint32_t)swapchainImages.size();
-		allocInfo.pSetLayouts = layouts.data();
-
-		descriptorSets.resize((uint32_t)swapchainImages.size());
-		if (vkAllocateDescriptorSets(device->logicalDevice, &allocInfo, descriptorSets.data()) != VK_SUCCESS)
-			throw std::runtime_error("Failed to create descriptor sets");
-
-		for (uint32_t i = 0; i < (uint32_t)swapchainImages.size(); i++)
-		{
-			VkDescriptorBufferInfo uboInfo = {};
-			uboInfo.offset = 0;
-			uboInfo.range = sizeof(UniformBufferObject);
-			uboInfo.buffer = uboBuffers[i];
-
-			VkDescriptorImageInfo albedoInfo = {};
-			albedoInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			albedoInfo.imageView = albedoImageView;
-			albedoInfo.sampler = albedoImageSampler;
-
-			VkDescriptorBufferInfo lightInfo = {};
-			lightInfo.offset = 0;
-			lightInfo.range = sizeof(LightInformation);
-			lightInfo.buffer = lightBuffers[i];
-
-			VkDescriptorImageInfo normalInfo = {};
-			normalInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			normalInfo.imageView = normalImageView;
-			normalInfo.sampler = normalImageSampler;
-
-			std::array<VkWriteDescriptorSet, 4> descriptorWrites = {};
-			// UBO
-			descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			descriptorWrites[0].dstSet = descriptorSets[i];
-			descriptorWrites[0].dstBinding = 0;
-			descriptorWrites[0].dstArrayElement = 0;
-			descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			descriptorWrites[0].descriptorCount = 1;
-			descriptorWrites[0].pBufferInfo = &uboInfo;
-			// Albedo sampler
-			descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			descriptorWrites[1].dstSet = descriptorSets[i];
-			descriptorWrites[1].dstBinding = 1;
-			descriptorWrites[1].dstArrayElement = 0;
-			descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			descriptorWrites[1].descriptorCount = 1;
-			descriptorWrites[1].pImageInfo = &albedoInfo;
-			// UBO
-			descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			descriptorWrites[2].dstSet = descriptorSets[i];
-			descriptorWrites[2].dstBinding = 2;
-			descriptorWrites[2].dstArrayElement = 0;
-			descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			descriptorWrites[2].descriptorCount = 1;
-			descriptorWrites[2].pBufferInfo = &lightInfo;
-			// Normal sampler
-			descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			descriptorWrites[3].dstSet = descriptorSets[i];
-			descriptorWrites[3].dstBinding = 3;
-			descriptorWrites[3].dstArrayElement = 0;
-			descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			descriptorWrites[3].descriptorCount = 1;
-			descriptorWrites[3].pImageInfo = &normalInfo;
-
-			vkUpdateDescriptorSets(device->logicalDevice, (uint32_t)descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
-		}
-	}
-
-// ==============================================
-// Command Buffers
-// ==============================================
-
-	// Create objects with instructions on rendering
-// TODO : Split like Begin/End Single Time Commands
-	void CreateCommandBuffers()
-	{
-		commandBuffers.resize((uint32_t)swapchainFrameBuffers.size());
-
-		VkCommandBufferAllocateInfo allocInfo = {};
-		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		allocInfo.commandPool = device->commandPools[graphicsCommandPoolIndex];
-		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		allocInfo.commandBufferCount = (uint32_t)commandBuffers.size();
-
-		if (vkAllocateCommandBuffers(device->logicalDevice, &allocInfo, commandBuffers.data()) != VK_SUCCESS)
-			throw std::runtime_error("Failed to create command buffers");
-
-		for (uint32_t i = 0; i < (uint32_t)commandBuffers.size(); i++)
-		{
-			VkCommandBufferBeginInfo beginInfo = {};
-			beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-			beginInfo.pInheritanceInfo = nullptr;
-
-			if (vkBeginCommandBuffer(commandBuffers[i], &beginInfo) != VK_SUCCESS)
-				throw std::runtime_error("Failed to begin command buffer");
-
-			VkRenderPassBeginInfo renderPassBeginInfo = {};
-			renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-			renderPassBeginInfo.renderPass = renderPass;
-			renderPassBeginInfo.framebuffer = swapchainFrameBuffers[i];
-			renderPassBeginInfo.renderArea.offset = { 0, 0 };
-			renderPassBeginInfo.renderArea.extent = swapchainExtent;
-			std::array<VkClearValue, 2> clearValues;
-			clearValues[0].color = { 0.02f, 0.025f, 0.03f, 1.0f };
-			clearValues[1].depthStencil = { 1.0f, 0 };
-			renderPassBeginInfo.clearValueCount = (uint32_t)clearValues.size();
-			renderPassBeginInfo.pClearValues = clearValues.data();
-
-			vkCmdBeginRenderPass(commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-			VkBuffer vertBuffers[] = { vertexBuffer };
-			VkDeviceSize offsets[] = { 0 };
-			vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertBuffers, offsets);
-			vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[i], 0, nullptr);
-			vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(testMesh.indices.size()), 1, 0, 0, 0);
-
-			vkCmdEndRenderPass(commandBuffers[i]);
-
-			if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS)
-				throw std::runtime_error("Failed to record command buffer");
-		}
-	}
-
 // ==============================================
 // Create texture
 // ==============================================
@@ -1171,7 +923,7 @@ private:
 	{
 		int textureWidth, textureHeight, textureChannels;
 		stbi_uc* pixels = stbi_load(_directory.c_str(), &textureWidth, &textureHeight, &textureChannels, STBI_rgb_alpha);
-		VkDeviceSize imageSize = textureWidth * textureHeight * 4;
+		VkDeviceSize imageSize = (uint64_t)textureWidth * (uint64_t)textureHeight * 4;
 
 		if (!pixels)
 			throw std::runtime_error("Failed to load texture image");
@@ -1419,7 +1171,102 @@ private:
 // Load models
 // ==============================================
 
-	
+	std::vector<VkCommandBuffer> CrateCommandBuffers()
+	{
+		std::vector<VkCommandBuffer> cmdBuffers;
+		uint32_t count = AllocateCommandBuffers(VK_COMMAND_BUFFER_LEVEL_PRIMARY, graphicsCommandPoolIndex, cmdBuffers);
+
+		std::array<VkClearValue, 2> clearValues;
+		clearValues[0].color = { 0.02f, 0.025f, 0.03f, 1.0f };
+		clearValues[1].depthStencil = { 1.0f, 0 };
+
+		VkCommandBufferBeginInfo beginInfo = {};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.pInheritanceInfo = nullptr;
+
+		VkRenderPassBeginInfo renderPassBeginInfo = {};
+		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		renderPassBeginInfo.renderPass = renderPass;
+		renderPassBeginInfo.renderArea.offset = { 0, 0 };
+		renderPassBeginInfo.renderArea.extent = swapchainExtent;
+		renderPassBeginInfo.clearValueCount = (uint32_t)clearValues.size();
+		renderPassBeginInfo.pClearValues = clearValues.data();
+
+		for (uint32_t i = 0; i < count; i++)
+		{
+			//BeginCommandBuffer(i, renderPass, cmdBuffers[i]);
+
+			if (vkBeginCommandBuffer(cmdBuffers[i], &beginInfo) != VK_SUCCESS)
+				throw std::runtime_error("Failed to begin command buffer");
+
+			renderPassBeginInfo.framebuffer = swapchainFrameBuffers[i];
+
+			vkCmdBeginRenderPass(cmdBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+			vkCmdBindPipeline(cmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+
+			testObject->Draw(cmdBuffers[i], pipelineLayout);
+			testCube->Draw(cmdBuffers[i], pipelineLayout);
+
+			EndCommandBuffer(cmdBuffers[i]);
+		}
+
+		return cmdBuffers;
+	}
+
+// ==============================================
+// Command Buffers
+// ==============================================
+
+	// Create objects with instructions on rendering
+	uint32_t AllocateCommandBuffers(VkCommandBufferLevel _level, uint32_t _commandPoolIndex, std::vector<VkCommandBuffer>& _buffers)
+	{
+		uint32_t size = (uint32_t)swapchainFrameBuffers.size();
+		_buffers.resize(size);
+
+		VkCommandBufferAllocateInfo allocInfo = {};
+		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocInfo.commandPool = device->commandPools[_commandPoolIndex];
+		allocInfo.level = _level;
+		allocInfo.commandBufferCount = size;
+
+		if (vkAllocateCommandBuffers(device->logicalDevice, &allocInfo, _buffers.data()) != VK_SUCCESS)
+			throw std::runtime_error("Failed to create command buffers");
+
+		return size;
+	}
+
+	void BeginCommandBuffer(uint32_t _index, VkRenderPass _renderPass, VkCommandBuffer& _buffer)
+	{
+		VkCommandBufferBeginInfo beginInfo = {};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.pInheritanceInfo = nullptr;
+
+		if (vkBeginCommandBuffer(_buffer, &beginInfo) != VK_SUCCESS)
+			throw std::runtime_error("Failed to begin command buffer");
+
+		VkRenderPassBeginInfo renderPassBeginInfo = {};
+		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		renderPassBeginInfo.renderPass = _renderPass;
+		renderPassBeginInfo.framebuffer = swapchainFrameBuffers[_index];
+		renderPassBeginInfo.renderArea.offset = { 0, 0 };
+		renderPassBeginInfo.renderArea.extent = swapchainExtent;
+		std::array<VkClearValue, 2> clearValues;
+		clearValues[0].color = { 0.02f, 0.025f, 0.03f, 1.0f };
+		clearValues[1].depthStencil = { 1.0f, 0 };
+		renderPassBeginInfo.clearValueCount = (uint32_t)clearValues.size();
+		renderPassBeginInfo.pClearValues = clearValues.data();
+
+		vkCmdBeginRenderPass(_buffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+	}
+
+	void EndCommandBuffer(VkCommandBuffer& _buffer)
+	{
+		vkCmdEndRenderPass(_buffer);
+
+		if (vkEndCommandBuffer(_buffer) != VK_SUCCESS)
+			throw std::runtime_error("Failed to record command buffer");
+	}
 
 // ==============================================
 // Main Loop
@@ -1553,7 +1400,10 @@ private:
 		ubo.proj = glm::perspective(glm::radians(45.0f), swapchainExtent.width / (float)swapchainExtent.height, 0.1f, 100.0f);
 		ubo.proj[1][1] *= -1;
 
-		CopyDataToBufferMemory(&ubo, sizeof(ubo), uboBuffersMemory[_currentFrame]);
+		CopyDataToBufferMemory(&ubo, sizeof(ubo), testObject->uboBufferMemory);
+
+		ubo.model = glm::scale(ubo.model, glm::vec3(0.75f)); // Make the cube smaller to see the sphere
+		CopyDataToBufferMemory(&ubo, sizeof(ubo), testCube->uboBufferMemory);
 
 	// LIGHT
 		LightInformation light = {};
@@ -1561,7 +1411,8 @@ private:
 		//light.position = {0.0f, glm::sin(time.totalTime), (glm::cos(time.totalTime) * 0.5f + 1.5f)};
 		light.position = {0.0f, 0.0f, 3.0f};
 
-		CopyDataToBufferMemory(&light, sizeof(LightInformation), lightBuffersMemory[_currentFrame]);
+		CopyDataToBufferMemory(&light, sizeof(LightInformation), testObject->lightBufferMemory);
+		CopyDataToBufferMemory(&light, sizeof(LightInformation), testCube->lightBufferMemory);
 	}
 
 	// Maps buffer memory and copies input data to it
@@ -1584,13 +1435,6 @@ private:
 		vkDestroyImage(device->logicalDevice, depthImage, nullptr);
 		vkFreeMemory(device->logicalDevice, depthImageMemory, nullptr);
 
-		for (uint32_t i = 0; i < (uint32_t)swapchainImages.size(); i++)
-		{
-			vkDestroyBuffer(device->logicalDevice, uboBuffers[i], nullptr);
-			vkFreeMemory(device->logicalDevice, uboBuffersMemory[i], nullptr);
-			vkDestroyBuffer(device->logicalDevice, lightBuffers[i], nullptr);
-			vkFreeMemory(device->logicalDevice, lightBuffersMemory[i], nullptr);
-		}
 		vkDestroyDescriptorPool(device->logicalDevice, descriptorPool, nullptr);
 
 		for (const auto& f : swapchainFrameBuffers)
@@ -1613,6 +1457,9 @@ private:
 	{
 		CleanupSwapchain();
 
+		delete(testObject);
+		delete(testCube);
+
 		vkDestroyDescriptorSetLayout(device->logicalDevice, descriptorSetLayout, nullptr);
 
 		// Albedo
@@ -1625,11 +1472,6 @@ private:
 		vkDestroyImageView(device->logicalDevice, normalImageView, nullptr);
 		vkDestroyImage(device->logicalDevice, normalImage, nullptr);
 		vkFreeMemory(device->logicalDevice, normalImageMemory, nullptr);
-
-		vkDestroyBuffer(device->logicalDevice, indexBuffer, nullptr);
-		vkFreeMemory(device->logicalDevice, indexBufferMemory, nullptr);
-		vkDestroyBuffer(device->logicalDevice, vertexBuffer, nullptr);
-		vkFreeMemory(device->logicalDevice, vertexBufferMemory, nullptr);
 
 		for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{

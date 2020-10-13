@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <vulkan/vulkan.h>
+#include "Mesh.h"
 
 struct VulkanDevice
 {
@@ -201,6 +202,15 @@ struct VulkanDevice
 		EndSingleTimeCommands(commandBuffer, transientPoolIndex, transferQueue);
 	}
 
+	// Maps buffer memory and copies input data to it
+	void CopyDataToBufferMemory(const void* _srcData, VkDeviceSize _size, VkDeviceMemory& _memory, VkDeviceSize _offset = 0, VkMemoryMapFlags _flags = 0)
+	{
+		void* tmpData;
+		vkMapMemory(logicalDevice, _memory, _offset, _size, _flags, &tmpData);
+		memcpy(tmpData, _srcData, _size);
+		vkUnmapMemory(logicalDevice, _memory);
+	}
+
 	VkCommandBuffer BeginSingleTimeCommands(uint32_t _poolIndex)
 	{
 		VkCommandBufferAllocateInfo allocInfo = {};
@@ -236,6 +246,69 @@ struct VulkanDevice
 	}
 
 
+	// Creates a buffer in GPU memory for the Verts vector
+	// Copies the Verts vector into the buffer
+	void CreateVertexBuffer(const std::vector<Vertex> _vertices, VkBuffer& _buffer, VkDeviceMemory& _memory)
+	{
+		VkDeviceSize bufferSize = sizeof(_vertices[0]) * (uint32_t)_vertices.size();
+
+		VkBuffer stagingBuffer;
+		VkDeviceMemory stagingBufferMemory;
+		CreateBuffer(
+			bufferSize,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			stagingBuffer,
+			stagingBufferMemory
+		);
+
+		CopyDataToBufferMemory(_vertices.data(), bufferSize, stagingBufferMemory);
+
+		CreateBuffer(
+			bufferSize,
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+			_buffer,
+			_memory
+		);
+
+		CopyBuffer(stagingBuffer, _buffer, bufferSize);
+
+		vkDestroyBuffer(logicalDevice, stagingBuffer, nullptr);
+		vkFreeMemory(logicalDevice, stagingBufferMemory, nullptr);
+	}
+
+	// Creates a buffer in GPU memory for the Indices vector
+	// Copies the Indices vector into the buffer
+	void CreateIndexBuffer(const std::vector<uint32_t> _indices, VkBuffer& _buffer, VkDeviceMemory& _memory)
+	{
+		VkDeviceSize bufferSize = sizeof(_indices[0]) * (uint32_t)_indices.size();
+
+		VkBuffer stagingBuffer;
+		VkDeviceMemory stagingBufferMemory;
+		CreateBuffer(
+			bufferSize,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			stagingBuffer,
+			stagingBufferMemory
+		);
+
+		CopyDataToBufferMemory(_indices.data(), bufferSize, stagingBufferMemory);
+
+		CreateBuffer(
+			bufferSize,
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+			_buffer,
+			_memory
+		);
+
+		CopyBuffer(stagingBuffer, _buffer, bufferSize);
+
+		vkDestroyBuffer(logicalDevice, stagingBuffer, nullptr);
+		vkFreeMemory(logicalDevice, stagingBufferMemory, nullptr);
+	}
 
 };
 
