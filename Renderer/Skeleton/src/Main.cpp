@@ -123,6 +123,10 @@ private:
 	VkDeviceMemory depthImageMemory;
 	VkImageView depthImageView;
 
+	Object* testObject;
+	Object* testCube;
+	Object* Bulb;
+
 // ==============================================
 // Initialization
 // ==============================================
@@ -147,7 +151,7 @@ private:
 		CreateRenderpass();
 		CreateDescriptorSetLayout();
 		CreateGraphicsPipeline();
-		CreateDescriptorPool(2);
+		CreateDescriptorPool(3);
 		CreateCommandPools();
 		// Depth buffer
 		CreateDepthResources();
@@ -164,6 +168,10 @@ private:
 		testCube = new Object(device, testCubeDir.c_str());
 		testCube->CreateUniformBuffers();
 		testCube->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
+
+		Bulb = new Object(device, testModelDir.c_str());
+		Bulb->CreateUniformBuffers();
+		Bulb->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
 
 		commandBuffers = CrateCommandBuffers();
 	}
@@ -188,14 +196,12 @@ private:
 		CreateGraphicsPipeline();
 		CreateDepthResources();
 		CreateFrameBuffers();
-		CreateDescriptorPool(2);
+		CreateDescriptorPool(3);
 		testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
 		testCube->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
+		Bulb->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
 		commandBuffers = CrateCommandBuffers();
 	}
-
-	Object* testObject;
-	Object* testCube;
 
 	#pragma region Object
 
@@ -232,19 +238,23 @@ private:
 			skel::initializers::DescriptorSetLyoutBinding(
 				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 				VK_SHADER_STAGE_VERTEX_BIT,
-				0),
+				0
+			),
 			skel::initializers::DescriptorSetLyoutBinding(
 				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 				VK_SHADER_STAGE_FRAGMENT_BIT,
-				1),
+				1
+			),
 			skel::initializers::DescriptorSetLyoutBinding(
 				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 				VK_SHADER_STAGE_FRAGMENT_BIT,
-				2),
+				2
+			),
 			skel::initializers::DescriptorSetLyoutBinding(
 				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 				VK_SHADER_STAGE_FRAGMENT_BIT,
-				3)
+				3
+			)
 		};
 
 		VkDescriptorSetLayoutCreateInfo createInfo = {};
@@ -263,7 +273,7 @@ private:
 			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),			// UBO
 			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount),	// Albeto
 			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),			// Light
-			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount)	// Normal
+			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount)		// Normal
 		};
 
 		VkDescriptorPoolCreateInfo createInfo = {};
@@ -276,9 +286,6 @@ private:
 			throw std::runtime_error("Failed to create descriptor pool");
 	}
 	#pragma endregion
-
-
-
 
 	// Creates a GLFW window pointer
 	void CreateWindow()
@@ -300,8 +307,7 @@ private:
 		glfwSetWindowUserPointer(window, this);
 		glfwSetFramebufferSizeCallback(window, WindowResizeCallback);
 		glfwSetCursorPosCallback(window, mouseMovementCallback);
-		// "Capture" the cursor when the window has focus
-		// Locks the cursor to the window & makes it invisible
+		// Lock the cursor to the window & makes it invisible
 		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	}
 
@@ -702,51 +708,6 @@ private:
 	// Define variables for each stage of the pipeline
 	void CreateGraphicsPipeline()
 	{
-		VkGraphicsPipelineCreateInfo pipelineCreateInfo = {};
-		pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-
-	// ===== Shader Stage =====
-		std::vector<char> vertFile = LoadFile(vertShaderDir.c_str());
-		std::vector<char> fragFile = LoadFile(fragShaderDir.c_str());
-		vertShaderModule = CreateShaderModule(vertFile);
-		fragShaderModule = CreateShaderModule(fragFile);
-
-		VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
-		vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-		vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-		vertShaderStageInfo.module = vertShaderModule;
-		vertShaderStageInfo.pName = "main";
-		VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
-		fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-		fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-		fragShaderStageInfo.module = fragShaderModule;
-		fragShaderStageInfo.pName = "main";
-
-		VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
-		pipelineCreateInfo.stageCount = 2;
-		pipelineCreateInfo.pStages = shaderStages;
-
-	// ===== Vertex Input =====
-		VkVertexInputBindingDescription vertInputBinding = Vertex::GetBindingDescription();
-		auto vertInputAttribute = Vertex::GetAttributeDescription();
-
-		VkPipelineVertexInputStateCreateInfo vertInputState = {};
-		vertInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-		vertInputState.vertexBindingDescriptionCount = 1;
-		vertInputState.pVertexBindingDescriptions = &vertInputBinding;
-		vertInputState.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertInputAttribute.size());
-		vertInputState.pVertexAttributeDescriptions = vertInputAttribute.data();
-
-		pipelineCreateInfo.pVertexInputState = &vertInputState;
-
-	// ===== Input Assembly =====
-		VkPipelineInputAssemblyStateCreateInfo inputAssemblyState = {};
-		inputAssemblyState.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-		inputAssemblyState.primitiveRestartEnable = VK_FALSE;
-		inputAssemblyState.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-		pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState;
-
 	// ===== Viewport =====
 		VkViewport viewport;
 		viewport.width = (float)swapchainExtent.width;
@@ -760,76 +721,115 @@ private:
 		scissor.extent = swapchainExtent;
 		scissor.offset = { 0, 0 };
 
-		VkPipelineViewportStateCreateInfo viewportState = {};
-		viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-		viewportState.viewportCount = 1;
-		viewportState.pViewports = &viewport;
-		viewportState.scissorCount = 1;
-		viewportState.pScissors = &scissor;
+		VkPipelineViewportStateCreateInfo viewportState =
+			skel::initializers::PipelineViewportStateCreateInfo(
+				1,
+				&viewport,
+				1,
+				&scissor
+			);
 
-		pipelineCreateInfo.pViewportState = &viewportState;
+	// ===== Vertex Input =====
+		VkVertexInputBindingDescription vertInputBinding = Vertex::GetBindingDescription();
+		auto vertInputAttribute = Vertex::GetAttributeDescription();
+
+		VkPipelineVertexInputStateCreateInfo vertInputState =
+			skel::initializers::PipelineVertexInputStateCreateInfo(
+				1,
+				&vertInputBinding,
+				static_cast<uint32_t>(vertInputAttribute.size()),
+				vertInputAttribute.data()
+			);
+
+	// ===== Input Assembly =====
+		VkPipelineInputAssemblyStateCreateInfo inputAssemblyState =
+			skel::initializers::PipelineInputAssemblyStateCreateInfo(
+				VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
+			);
 
 	// ===== Rasterizer =====
-		VkPipelineRasterizationStateCreateInfo rasterizationState = {};
-		rasterizationState.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-		rasterizationState.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-		rasterizationState.cullMode = VK_CULL_MODE_BACK_BIT;
-		rasterizationState.polygonMode = VK_POLYGON_MODE_FILL;
-		rasterizationState.depthBiasEnable = VK_FALSE;
-		rasterizationState.depthClampEnable = VK_FALSE;
-		//rasterizationState.depthBiasClamp = 0;
-		//rasterizationState.depthBiasConstantFactor = 0;
-		//rasterizationState.depthBiasSlopeFactor = 0;
-		rasterizationState.lineWidth = 1;
-		rasterizationState.rasterizerDiscardEnable = VK_FALSE;
-
-		pipelineCreateInfo.pRasterizationState = &rasterizationState;
+		VkPipelineRasterizationStateCreateInfo rasterizationState =
+			skel::initializers::PipelineRasterizationStateCreateInfo(
+				VK_POLYGON_MODE_FILL
+			);
 
 	// ===== Multisampling =====
-		VkPipelineMultisampleStateCreateInfo mutisampleState = {};
-		mutisampleState.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-		mutisampleState.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-		mutisampleState.sampleShadingEnable = VK_FALSE;
-		//mutisampleState.alphaToCoverageEnable = VK_FALSE;
-		//mutisampleState.alphaToOneEnable = VK_FALSE;
-
-		pipelineCreateInfo.pMultisampleState = &mutisampleState;
+		VkPipelineMultisampleStateCreateInfo mutisampleState =
+			skel::initializers::PipelineMultisampleStateCreateInfo(
+				VK_SAMPLE_COUNT_1_BIT
+			);
 
 	// ===== Depth Stencil =====
-		VkPipelineDepthStencilStateCreateInfo depthStencilState = {};
-		depthStencilState.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-		depthStencilState.depthTestEnable = VK_TRUE;
-		depthStencilState.depthWriteEnable = VK_TRUE;
-		depthStencilState.depthBoundsTestEnable = VK_FALSE;
-		depthStencilState.depthCompareOp = VK_COMPARE_OP_LESS;
-		depthStencilState.stencilTestEnable = VK_FALSE;
-
-		pipelineCreateInfo.pDepthStencilState = &depthStencilState;
+		VkPipelineDepthStencilStateCreateInfo depthStencilState =
+			skel::initializers::PipelineDepthStencilStateCreateInfo(
+				VK_TRUE,
+				VK_TRUE,
+				VK_COMPARE_OP_LESS
+			);
 
 	// ===== Color Blend =====
-		VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
-		colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-		colorBlendAttachment.blendEnable = VK_FALSE;
+		VkPipelineColorBlendAttachmentState colorBlendAttachment =
+			skel::initializers::PipelineColorBlendAttachmentState(
+				VK_FALSE,
+				VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+			);
 
-		VkPipelineColorBlendStateCreateInfo colorBlendState = {};
-		colorBlendState.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-		colorBlendState.logicOpEnable = VK_FALSE;
-		colorBlendState.attachmentCount = 1;
-		colorBlendState.pAttachments = &colorBlendAttachment;
-
-		pipelineCreateInfo.pColorBlendState = &colorBlendState;
+		VkPipelineColorBlendStateCreateInfo colorBlendState =
+			skel::initializers::PipelineColorBlendStateCreateInfo(
+				1,
+				&colorBlendAttachment
+			);
 
 	// ===== Dynamic =====
-		pipelineCreateInfo.pDynamicState = nullptr;
+		VkPipelineDynamicStateCreateInfo dynamicState =
+			skel::initializers::PipelineDynamicStateCreateInfo(
+				0,
+				nullptr
+			);
 
 	// ===== Pipeline Layout =====
 		CreatePipelineLayout();
-		pipelineCreateInfo.layout = pipelineLayout;
 
-	// ===== RenderPass =====
-		pipelineCreateInfo.renderPass = renderPass;
+	// ===== Shader Stage =====
+		std::vector<char> vertFile = LoadFile(vertShaderDir.c_str());
+		std::vector<char> fragFile = LoadFile(fragShaderDir.c_str());
+		vertShaderModule = CreateShaderModule(vertFile);
+		fragShaderModule = CreateShaderModule(fragFile);
+
+		VkPipelineShaderStageCreateInfo vertShaderStageInfo =
+			skel::initializers::PipelineShaderStageCreateInfo(
+				VK_SHADER_STAGE_VERTEX_BIT,
+				vertShaderModule
+			);
+		VkPipelineShaderStageCreateInfo fragShaderStageInfo =
+			skel::initializers::PipelineShaderStageCreateInfo(
+				VK_SHADER_STAGE_FRAGMENT_BIT,
+				fragShaderModule
+			);
+
+		std::vector<VkPipelineShaderStageCreateInfo> shaderStages = {
+			vertShaderStageInfo,
+			fragShaderStageInfo
+		};
 
 	// ===== Pipeline Creation =====
+		VkGraphicsPipelineCreateInfo pipelineCreateInfo = 
+			skel::initializers::GraphicsPipelineCreateInfo(
+				pipelineLayout,
+				renderPass
+			);
+
+		pipelineCreateInfo.pViewportState		= &viewportState;
+		pipelineCreateInfo.pVertexInputState	= &vertInputState;
+		pipelineCreateInfo.pInputAssemblyState	= &inputAssemblyState;
+		pipelineCreateInfo.pRasterizationState	= &rasterizationState;
+		pipelineCreateInfo.pMultisampleState	= &mutisampleState;
+		pipelineCreateInfo.pDepthStencilState	= &depthStencilState;
+		pipelineCreateInfo.pColorBlendState		= &colorBlendState;
+		pipelineCreateInfo.pDynamicState		= &dynamicState;
+		pipelineCreateInfo.stageCount			= static_cast<uint32_t>(shaderStages.size());
+		pipelineCreateInfo.pStages				= shaderStages.data();
+
 
 		if (vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline) != VK_SUCCESS)
 			throw std::runtime_error("Failed to create graphics pipeline");
@@ -841,10 +841,10 @@ private:
 	// Binds shader uniforms
 	void CreatePipelineLayout()
 	{
-		VkPipelineLayoutCreateInfo createInfo = {};
-		createInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		createInfo.setLayoutCount = 1;
-		createInfo.pSetLayouts = &descriptorSetLayout;
+		VkPipelineLayoutCreateInfo createInfo =
+			skel::initializers::PipelineLayoutCreateInfo(
+				&descriptorSetLayout
+			);
 
 		if (vkCreatePipelineLayout(device->logicalDevice, &createInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
 			throw std::runtime_error("Failed to create graphics pipeline layout");
@@ -1207,6 +1207,7 @@ private:
 
 			testObject->Draw(cmdBuffers[i], pipelineLayout);
 			testCube->Draw(cmdBuffers[i], pipelineLayout);
+			Bulb->Draw(cmdBuffers[i], pipelineLayout);
 
 			EndCommandBuffer(cmdBuffers[i]);
 		}
@@ -1395,8 +1396,8 @@ private:
 		ubo.view = cam.view;
 		ubo.camPosition = cam.cameraPosition;
 
-		ubo.model = glm::rotate(glm::mat4(1.0f), time.totalTime * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		//ubo.model = glm::mat4(1.0f);
+		ubo.model = glm::rotate(glm::mat4(1.0f), time.totalTime * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		ubo.proj = glm::perspective(glm::radians(45.0f), swapchainExtent.width / (float)swapchainExtent.height, 0.1f, 100.0f);
 		ubo.proj[1][1] *= -1;
 
@@ -1413,6 +1414,11 @@ private:
 
 		CopyDataToBufferMemory(&light, sizeof(LightInformation), testObject->lightBufferMemory);
 		CopyDataToBufferMemory(&light, sizeof(LightInformation), testCube->lightBufferMemory);
+		CopyDataToBufferMemory(&light, sizeof(LightInformation), Bulb->lightBufferMemory);
+
+		ubo.model = glm::translate(glm::mat4(1.0f), light.position);
+		ubo.model = glm::scale(ubo.model, glm::vec3(0.1f));
+		CopyDataToBufferMemory(&ubo, sizeof(ubo), Bulb->uboBufferMemory);
 	}
 
 	// Maps buffer memory and copies input data to it
@@ -1459,6 +1465,7 @@ private:
 
 		delete(testObject);
 		delete(testCube);
+		delete(Bulb);
 
 		vkDestroyDescriptorSetLayout(device->logicalDevice, descriptorSetLayout, nullptr);
 

@@ -17,7 +17,7 @@ public:
 	glm::vec3 cameraUp;
 
 	double pitch = 0.0f;
-	double yaw = -90.0f; // 0 = looking down the positive X axis, increases counter-clockwise
+	double yaw = 0.0f; // 0 = looking down the positive X axis, increases counter-clockwise
 
 	glm::mat4 view;
 private:
@@ -26,10 +26,11 @@ private:
 public:
 	Camera()
 	{
-		cameraPosition = glm::vec3(0.0f, 0.0f, 3.0f);
-		cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
+		cameraPosition = glm::vec3(0.0f, 1.0f, 3.0f);
 		cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
-		view = glm::lookAt(cameraPosition, cameraPosition + cameraFront, cameraUp);
+		pitch = -20.0f;
+		yaw = -90.0f;
+		UpdateCameraView();
 	}
 
 	glm::vec3 getRight()
