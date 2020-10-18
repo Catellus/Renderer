@@ -22,21 +22,12 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tinyobjloader/tiny_obj_loader.h>
 
-//// Mind the alignment
-//struct UniformBufferObject {
-//	alignas(16) glm::mat4 model;
-//	alignas(16) glm::mat4 view;
-//	alignas(16) glm::mat4 proj;
-//	alignas(16) glm::vec3 camPosition;
-//};
-
 struct Vertex {
 	glm::vec3 position;
-	glm::vec3 color;
 	glm::vec2 texCoord;
 	glm::vec3 normal;
-	glm::vec3 tangent;
-	glm::vec3 bitangent;
+	glm::vec4 tangent;
+	//glm::vec3 bitangent;
 
 	static VkVertexInputBindingDescription GetBindingDescription() {
 		VkVertexInputBindingDescription bindingDescription = {};
@@ -45,60 +36,61 @@ struct Vertex {
 		bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 		return bindingDescription;
 	}
-	static std::array<VkVertexInputAttributeDescription, 6> GetAttributeDescription() {
-		std::array<VkVertexInputAttributeDescription, 6> attributeDescription = {};
+	static std::array<VkVertexInputAttributeDescription, 4> GetAttributeDescription() {
+		std::array<VkVertexInputAttributeDescription, 4> attributeDescription = {};
 		// Position
 		attributeDescription[0].binding = 0;
 		attributeDescription[0].location = 0;
 		attributeDescription[0].format = VK_FORMAT_R32G32B32_SFLOAT;
 		attributeDescription[0].offset = offsetof(Vertex, position);
-		// Color
+		// UV coord
 		attributeDescription[1].binding = 0;
 		attributeDescription[1].location = 1;
-		attributeDescription[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attributeDescription[1].offset = offsetof(Vertex, color);
-		// UV coord
+		attributeDescription[1].format = VK_FORMAT_R32G32_SFLOAT;
+		attributeDescription[1].offset = offsetof(Vertex, texCoord);
+		// Normal
 		attributeDescription[2].binding = 0;
 		attributeDescription[2].location = 2;
-		attributeDescription[2].format = VK_FORMAT_R32G32_SFLOAT;
-		attributeDescription[2].offset = offsetof(Vertex, texCoord);
-		// Normal
+		attributeDescription[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+		attributeDescription[2].offset = offsetof(Vertex, normal);
+		// Tangent
 		attributeDescription[3].binding = 0;
 		attributeDescription[3].location = 3;
-		attributeDescription[3].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attributeDescription[3].offset = offsetof(Vertex, normal);
-		// Tangent
-		attributeDescription[4].binding = 0;
-		attributeDescription[4].location = 4;
-		attributeDescription[4].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attributeDescription[4].offset = offsetof(Vertex, tangent);
-		// Bitangent
-		attributeDescription[5].binding = 0;
-		attributeDescription[5].location = 5;
-		attributeDescription[5].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attributeDescription[5].offset = offsetof(Vertex, bitangent);
+		attributeDescription[3].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+		attributeDescription[3].offset = offsetof(Vertex, tangent);
+		//// Bitangent
+		//attributeDescription[4].binding = 0;
+		//attributeDescription[4].location = 4;
+		//attributeDescription[4].format = VK_FORMAT_R32G32B32_SFLOAT;
+		//attributeDescription[4].offset = offsetof(Vertex, bitangent);
 
 		return attributeDescription;
 	}
 
 	bool operator==(const Vertex& other) const
 	{
-		return position == other.position && color == other.color && texCoord == other.texCoord && normal == other.normal;
+		return position == other.position && texCoord == other.texCoord && normal == other.normal && tangent == other.tangent;
 	}
 };
 
+// http://www.azillionmonkeys.com/qed/hash.html
 namespace std {
 	template<> struct hash<Vertex> {
 		size_t operator()(Vertex const& vertex) const {
 			return ((hash<glm::vec3>()(vertex.position) ^
-				(hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
-				(hash<glm::vec2>()(vertex.texCoord) << 1) ^
+				(hash<glm::vec2>()(vertex.texCoord) << 1)) >> 1) ^
 				(hash<glm::vec3>()(vertex.normal) << 1) ^
-				(hash<glm::vec3>()(vertex.tangent) << 1) ^
-				(hash<glm::vec3>()(vertex.bitangent) << 1);
+				(hash<glm::vec3>()(vertex.tangent) << 1);
+				//(hash<glm::vec3>()(vertex.bitangent) << 1);
 		}
 	};
 }
+
+struct TemporaryVertexTangentData
+{
+	glm::vec3 tan;
+	glm::vec3 bitan;
+};
 
 struct Mesh
 {
@@ -168,8 +160,6 @@ Mesh LoadMesh(const char* _directory)
 				attrib.normals[3 * index.normal_index + 2]
 			};
 
-			vert.color = { 1.0f, 1.0f, 1.0f };
-
 			if (uniqueVerts.count(vert) == 0)
 			{
 				uniqueVerts[vert] = (uint32_t)tmpMesh.vertices.size();
@@ -179,40 +169,64 @@ Mesh LoadMesh(const char* _directory)
 		}
 	}
 
-	glm::vec3 tangent, bitangent;
-	glm::vec3 edge1, edge2;
-	glm::vec2 deltaUV1, deltaUV2;
-	float f;
+// Calculate Tangent & Bitangent --> https://web.archive.org/web/20140203235513/http://www.terathon.com/code/tangent.html
+// TBN in shaders--> https://www.gamasutra.com/blogs/RobertBasler/20131122/205462/Three_Normal_Mapping_Techniques_Explained_For_the_Mathematically_Uninclined.php?print=1
+// TODO(Yeager) : average the Tangents & Bitangents from every triangle the vert is a part of
+	//glm::vec3 Q1, Q2;
+	//glm::vec3 T, B;
+	//glm::vec2 st1, st2;
+	float r;
+	//glm::vec3 tan, bit;
+
+	std::vector<TemporaryVertexTangentData> tanData(static_cast<uint32_t>(tmpMesh.vertices.size()));
+
 	for (uint32_t i = 0; i < (uint32_t)tmpMesh.indices.size(); i += 3)
 	{
-		Vertex& vertOne = tmpMesh.vertices[tmpMesh.indices[i]];
-		Vertex& vertTwo = tmpMesh.vertices[tmpMesh.indices[i + 1]];
-		Vertex& vertThr = tmpMesh.vertices[tmpMesh.indices[i + 2]];
+		uint32_t idx0 = tmpMesh.indices[i    ];
+		uint32_t idx1 = tmpMesh.indices[i + 1];
+		uint32_t idx2 = tmpMesh.indices[i + 2];
 
-		edge1 = vertTwo.position - vertOne.position;
-		edge2 = vertThr.position - vertOne.position;
-		deltaUV1 = vertTwo.texCoord - vertOne.texCoord;
-		deltaUV2 = vertThr.texCoord - vertOne.texCoord;
+		Vertex v1 = tmpMesh.vertices[idx0];
+		Vertex v2 = tmpMesh.vertices[idx1];
+		Vertex v3 = tmpMesh.vertices[idx2];
 
-		f = 1.0f / (deltaUV1.r * deltaUV2.g - deltaUV2.r * deltaUV1.g);
+		glm::vec3 p1 = v2.position - v1.position;
+		glm::vec3 p2 = v3.position - v1.position;
 
-		tangent.r = f * (deltaUV2.g * edge1.r - deltaUV1.g * edge2.r);
-		tangent.g = f * (deltaUV2.g * edge1.g - deltaUV1.g * edge2.g);
-		tangent.b = f * (deltaUV2.g * edge1.b - deltaUV1.g * edge2.b);
+		glm::vec2 u1 = v2.texCoord - v1.texCoord;
+		glm::vec2 u2 = v3.texCoord - v1.texCoord;
 
-		bitangent.r = f * (-deltaUV2.r * edge1.r + deltaUV1.r * edge2.r);
-		bitangent.g = f * (-deltaUV2.r * edge1.g + deltaUV1.r * edge2.g);
-		bitangent.b = f * (-deltaUV2.r * edge1.b + deltaUV1.r * edge2.b);
+		r = 1.0f / (u1.x * u2.y - u1.y * u2.x);
+		glm::vec3 tan = r * (u2.y * p1 - u1.y * p2);
+		glm::vec3 bitan = r * (u1.x * p2 - u2.x * p1);
 
-		vertOne.tangent = tangent;
-		vertOne.bitangent = bitangent;
-		vertTwo.tangent = tangent;
-		vertTwo.bitangent = bitangent;
-		vertThr.tangent = tangent;
-		vertThr.bitangent = bitangent;
+		tanData[idx0].tan += tan;
+		tanData[idx1].tan += tan;
+		tanData[idx2].tan += tan;
+
+		tanData[idx0].bitan += bitan;
+		tanData[idx1].bitan += bitan;
+		tanData[idx2].bitan += bitan;
+	}
+
+	for (uint32_t i = 0; i < static_cast<uint32_t>(tmpMesh.vertices.size()); i++)
+	{
+		const glm::vec3& n = tmpMesh.vertices[i].normal;
+		const glm::vec3& t = tanData[i].tan;
+
+		// Gram-schmidt orthogonalize
+		glm::vec3 ot = glm::normalize((t - n * glm::dot(n, t)));
+
+		// handedness
+		float w = (glm::dot(glm::cross(n, t), tanData[i].bitan) < 0.0f) ? -1.0f : 1.0f;
+
+		tmpMesh.vertices[i].tangent = glm::vec4(ot.x, ot.y, ot.z, w);
 	}
 
 	std::printf("%s\n\tVerts: %d\n\tIndices: %d\n", _directory, (uint32_t)tmpMesh.vertices.size(), (uint32_t)tmpMesh.indices.size());
+
+	tanData.clear();
+
 	return tmpMesh;
 }
 

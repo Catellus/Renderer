@@ -39,6 +39,12 @@
   <ItemGroup>
     <None Include="res\default.frag" />
     <None Include="res\default.vert" />
+    <None Include="res\shaders\default.frag" />
+    <None Include="res\shaders\default.vert" />
+    <None Include="res\shaders\PBR.frag" />
+    <None Include="res\shaders\PBR.vert" />
+    <None Include="res\shaders\phongShading.frag" />
+    <None Include="res\shaders\phongShading.vert" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="NOTES.txt" />

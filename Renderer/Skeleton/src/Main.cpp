@@ -39,10 +39,10 @@ private:
 	const std::string TEXTURE_DIR = ".\\res\\textures\\";
 	const std::string MODEL_DIR   = ".\\res\\models\\";
 
-	const std::string vertShaderDir = SHADER_DIR + "phongShading_vert.spv";
-	const std::string fragShaderDir = SHADER_DIR + "phongShading_frag.spv";
-	const std::string albedoTextureDir = TEXTURE_DIR + "White.png";
-	const std::string normalTextureDir = TEXTURE_DIR + "gold\\Metal_GoldOld_1K_normal.png";
+	const std::string vertShaderDir = SHADER_DIR + "PBR_vert.spv";
+	const std::string fragShaderDir = SHADER_DIR + "PBR_frag.spv";
+	const std::string albedoTextureDir = TEXTURE_DIR + "TestNormalMap.png";
+	const std::string normalTextureDir = TEXTURE_DIR + "TestNormalMap.png";
 	const std::string testModelDir = MODEL_DIR + "SphereSmooth.obj";
 	const std::string testCubeDir = MODEL_DIR + "Cube.obj";
 	Mesh testMesh;
@@ -161,17 +161,17 @@ private:
 		CreateTexture(albedoTextureDir, albedoImage, albedoImageMemory, albedoImageView, albedoImageSampler);
 		CreateTexture(normalTextureDir, normalImage, normalImageMemory, normalImageView, normalImageSampler);
 
-		testObject = new Object(device, testModelDir.c_str());
-		testObject->CreateUniformBuffers();
-		testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
-
-		testCube = new Object(device, testCubeDir.c_str());
-		testCube->CreateUniformBuffers();
-		testCube->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
+		//testObject = new Object(device, testModelDir.c_str());
+		//testObject->CreateUniformBuffers();
+		//testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
 
 		Bulb = new Object(device, testModelDir.c_str());
 		Bulb->CreateUniformBuffers();
 		Bulb->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
+
+		testCube = new Object(device, testCubeDir.c_str());
+		testCube->CreateUniformBuffers();
+		testCube->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
 
 		commandBuffers = CrateCommandBuffers();
 	}
@@ -197,7 +197,7 @@ private:
 		CreateDepthResources();
 		CreateFrameBuffers();
 		CreateDescriptorPool(3);
-		testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
+		//testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
 		testCube->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
 		Bulb->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
 		commandBuffers = CrateCommandBuffers();
@@ -1205,7 +1205,7 @@ private:
 
 			vkCmdBindPipeline(cmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
-			testObject->Draw(cmdBuffers[i], pipelineLayout);
+			//testObject->Draw(cmdBuffers[i], pipelineLayout);
 			testCube->Draw(cmdBuffers[i], pipelineLayout);
 			Bulb->Draw(cmdBuffers[i], pipelineLayout);
 
@@ -1397,11 +1397,12 @@ private:
 		ubo.camPosition = cam.cameraPosition;
 
 		//ubo.model = glm::mat4(1.0f);
-		ubo.model = glm::rotate(glm::mat4(1.0f), time.totalTime * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		//ubo.model = glm::rotate(glm::mat4(1.0f), time.totalTime * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(glm::sin(time.totalTime) * 30.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		ubo.proj = glm::perspective(glm::radians(45.0f), swapchainExtent.width / (float)swapchainExtent.height, 0.1f, 100.0f);
 		ubo.proj[1][1] *= -1;
 
-		CopyDataToBufferMemory(&ubo, sizeof(ubo), testObject->uboBufferMemory);
+		//CopyDataToBufferMemory(&ubo, sizeof(ubo), testObject->uboBufferMemory);
 
 		ubo.model = glm::scale(ubo.model, glm::vec3(0.75f)); // Make the cube smaller to see the sphere
 		CopyDataToBufferMemory(&ubo, sizeof(ubo), testCube->uboBufferMemory);
@@ -1412,7 +1413,7 @@ private:
 		//light.position = {0.0f, glm::sin(time.totalTime), (glm::cos(time.totalTime) * 0.5f + 1.5f)};
 		light.position = {0.0f, 0.0f, 3.0f};
 
-		CopyDataToBufferMemory(&light, sizeof(LightInformation), testObject->lightBufferMemory);
+		//CopyDataToBufferMemory(&light, sizeof(LightInformation), testObject->lightBufferMemory);
 		CopyDataToBufferMemory(&light, sizeof(LightInformation), testCube->lightBufferMemory);
 		CopyDataToBufferMemory(&light, sizeof(LightInformation), Bulb->lightBufferMemory);
 
@@ -1463,7 +1464,7 @@ private:
 	{
 		CleanupSwapchain();
 
-		delete(testObject);
+		//delete(testObject);
 		delete(testCube);
 		delete(Bulb);
 
