@@ -5,11 +5,12 @@
 #include "Initializers.h"
 #include "VulkanDevice.h"
 #include "Mesh.h"
+#include "Texture.h"
 
 class Object
 {
 private:
-	struct UniformBufferObject {
+	struct MvpInfo {
 		alignas(16) glm::mat4 model;
 		alignas(16) glm::mat4 view;
 		alignas(16) glm::mat4 proj;
@@ -30,8 +31,8 @@ public:
 	VkBuffer indexBuffer;
 	VkDeviceMemory indexBufferMemory;
 
-	VkBuffer uboBuffer;
-	VkDeviceMemory uboBufferMemory;
+	VkBuffer mvpBuffer;
+	VkDeviceMemory mvpBufferMemory;
 	VkBuffer lightBuffer;
 	VkDeviceMemory lightBufferMemory;
 
@@ -49,11 +50,36 @@ public:
 	VkDescriptorSet descriptorSet;
 
 public:
-	Object(VulkanDevice* _device, const char* _modelDirectory) : device(_device)
+	Object(VulkanDevice* _device, const char* _modelDirectory, const char* _albedoDirectory, const char* _normalDirectory) : device(_device)
 	{
 		mesh = LoadMesh(_modelDirectory);
-		device->CreateVertexBuffer(mesh.vertices, vertexBuffer, vertexBufferMemory);
-		device->CreateIndexBuffer(mesh.indices, indexBuffer, indexBufferMemory);
+		device->CreateAndFillBuffer(
+			mesh.vertices.data(),
+			sizeof(mesh.vertices[0]) * static_cast<uint32_t>(mesh.vertices.size()),
+			vertexBuffer,
+			vertexBufferMemory,
+			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+		);
+		device->CreateAndFillBuffer(
+			mesh.indices.data(),
+			sizeof(mesh.indices[0]) * static_cast<uint32_t>(mesh.indices.size()),
+			indexBuffer,
+			indexBufferMemory,
+			VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+		);
+
+		if (_albedoDirectory)
+		{
+			skel::CreateTexture(device, _albedoDirectory, albedoImage, albedoImageMemory, albedoImageView, albedoImageSampler);
+		}
+		if (_normalDirectory)
+		{
+			skel::CreateTexture(device, _normalDirectory, normalImage, normalImageMemory, normalImageView, normalImageSampler);
+		}
+
+		CreateUniformBuffers();
 	}
 
 	~Object()
@@ -63,23 +89,33 @@ public:
 		vkDestroyBuffer	(device->logicalDevice, indexBuffer       , nullptr);
 		vkFreeMemory	(device->logicalDevice, indexBufferMemory , nullptr);
 
-		vkDestroyBuffer	(device->logicalDevice, uboBuffer        , nullptr);
-		vkFreeMemory	(device->logicalDevice, uboBufferMemory  , nullptr);
+		vkDestroyBuffer	(device->logicalDevice, mvpBuffer        , nullptr);
+		vkFreeMemory	(device->logicalDevice, mvpBufferMemory  , nullptr);
 		vkDestroyBuffer	(device->logicalDevice, lightBuffer      , nullptr);
 		vkFreeMemory	(device->logicalDevice, lightBufferMemory, nullptr);
+
+		vkDestroyImage		(device->logicalDevice, albedoImage       , nullptr);
+		vkFreeMemory		(device->logicalDevice, albedoImageMemory , nullptr);
+		vkDestroyImageView	(device->logicalDevice, albedoImageView   , nullptr);
+		vkDestroySampler	(device->logicalDevice, albedoImageSampler, nullptr);
+
+		vkDestroyImage		(device->logicalDevice, normalImage       , nullptr);
+		vkFreeMemory		(device->logicalDevice, normalImageMemory , nullptr);
+		vkDestroyImageView	(device->logicalDevice, normalImageView   , nullptr);
+		vkDestroySampler	(device->logicalDevice, normalImageSampler, nullptr);
 	}
 
 	void CreateUniformBuffers()
 	{
-		VkDeviceSize uboBufferSize = sizeof(UniformBufferObject);
+		VkDeviceSize mvpBufferSize = sizeof(MvpInfo);
 		VkDeviceSize lightBufferSize = sizeof(LightInformation);
 
 		device->CreateBuffer(
-			uboBufferSize,
+			mvpBufferSize,
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			uboBuffer,
-			uboBufferMemory
+			 mvpBuffer,
+			mvpBufferMemory
 		);
 
 		device->CreateBuffer(
@@ -91,7 +127,7 @@ public:
 		);
 	}
 
-	void CreateDescriptorSets(VkDescriptorPool _pool, VkDescriptorSetLayout _layout, VkImageView _alV, VkSampler _alS, VkImageView _nV, VkSampler _nS)
+	void CreateDescriptorSets(VkDescriptorPool _pool, VkDescriptorSetLayout _layout)
 	{
 		VkDescriptorSetAllocateInfo allocInfo = {};
 		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -104,13 +140,13 @@ public:
 
 		VkDescriptorBufferInfo uboInfo = {};
 		uboInfo.offset = 0;
-		uboInfo.range = sizeof(UniformBufferObject);
-		uboInfo.buffer = uboBuffer;
+		uboInfo.range = sizeof(MvpInfo);
+		uboInfo.buffer = mvpBuffer;
 
 		VkDescriptorImageInfo albedoInfo = {};
 		albedoInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		albedoInfo.imageView = _alV;//albedoImageView;
-		albedoInfo.sampler = _alS;//albedoImageSampler;
+		albedoInfo.imageView = albedoImageView;
+		albedoInfo.sampler = albedoImageSampler;
 
 		VkDescriptorBufferInfo lightInfo = {};
 		lightInfo.offset = 0;
@@ -119,8 +155,8 @@ public:
 
 		VkDescriptorImageInfo normalInfo = {};
 		normalInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		normalInfo.imageView = _nV;//normalImageView;
-		normalInfo.sampler = _nS;//normalImageSampler;
+		normalInfo.imageView = normalImageView;
+		normalInfo.sampler = normalImageSampler;
 
 
 		std::vector<VkWriteDescriptorSet> descriptorWrites = {
@@ -129,21 +165,21 @@ public:
 				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 				&uboInfo,
 				0),
-			skel::initializers::WriteDescriptorSet(
-				descriptorSet,
-				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				&albedoInfo,
-				1),
+			//skel::initializers::WriteDescriptorSet(
+			//	descriptorSet,
+			//	VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			//	&albedoInfo,
+			//	1),
 			skel::initializers::WriteDescriptorSet(
 				descriptorSet,
 				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 				&lightInfo,
-				2),
-			skel::initializers::WriteDescriptorSet(
-				descriptorSet,
-				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				&normalInfo,
-				3),
+				1),
+			//skel::initializers::WriteDescriptorSet(
+			//	descriptorSet,
+			//	VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			//	&normalInfo,
+			//	3),
 		};
 
 		vkUpdateDescriptorSets(device->logicalDevice, (uint32_t)descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);

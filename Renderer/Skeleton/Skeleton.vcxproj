@@ -96,6 +96,7 @@
     <ClInclude Include="src\Initializers.h" />
     <ClInclude Include="src\Mesh.h" />
     <ClInclude Include="src\Object.h" />
+    <ClInclude Include="src\Texture.h" />
     <ClInclude Include="src\VulkanDevice.h" />
   </ItemGroup>
   <ItemGroup>
@@ -105,8 +106,8 @@
     <None Include="res\shaders\default.vert" />
     <None Include="res\shaders\PBR.frag" />
     <None Include="res\shaders\PBR.vert" />
-    <None Include="res\shaders\phongShading.frag" />
-    <None Include="res\shaders\phongShading.vert" />
+    <None Include="res\shaders\unlit.frag" />
+    <None Include="res\shaders\unlit.vert" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="NOTES.txt" />

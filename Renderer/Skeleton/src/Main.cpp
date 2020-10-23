@@ -17,13 +17,14 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb/stb_image.h>
+//#define STB_IMAGE_IMPLEMENTATION
+//#include <stb/stb_image.h>
 
 #include "VulkanDevice.h"
 #include "Mesh.h"
 #include "Object.h"
 #include "Initializers.h"
+#include "Texture.h"
 
 // TODO : Fix normal re-calculation (Normals spiraling @ top/bottom of sphere)
 
@@ -39,12 +40,13 @@ private:
 	const std::string TEXTURE_DIR = ".\\res\\textures\\";
 	const std::string MODEL_DIR   = ".\\res\\models\\";
 
-	const std::string vertShaderDir = SHADER_DIR + "PBR_vert.spv";
-	const std::string fragShaderDir = SHADER_DIR + "PBR_frag.spv";
+	const std::string vertShaderDir = SHADER_DIR + "default_vert.spv";
+	const std::string fragShaderDir = SHADER_DIR + "default_frag.spv";
+	const std::string unlitVertShaderDir = SHADER_DIR + "unlit_vert.spv";
+	const std::string unlitFragShaderDir = SHADER_DIR + "unlit_frag.spv";
 	const std::string albedoTextureDir = TEXTURE_DIR + "TestNormalMap.png";
 	const std::string normalTextureDir = TEXTURE_DIR + "TestNormalMap.png";
-	const std::string testModelDir = MODEL_DIR + "SphereSmooth.obj";
-	const std::string testCubeDir = MODEL_DIR + "Cube.obj";
+	const std::string testModelDir = MODEL_DIR + "Cube.obj";
 	Mesh testMesh;
 
 	struct SurfaceProperties
@@ -85,6 +87,7 @@ private:
 	VkRenderPass renderPass;
 	VkPipelineLayout pipelineLayout;
 	VkPipeline pipeline;
+	VkPipeline unlitPipeline;
 
 	uint32_t graphicsCommandPoolIndex;
 	std::vector<VkCommandBuffer> commandBuffers;
@@ -105,19 +108,6 @@ private:
 	std::vector<VkFence> imageIsInFlight;
 
 // ===== Shaders =====
-	VkShaderModule vertShaderModule;
-	VkShaderModule fragShaderModule;
-
-	// Albedo
-	VkImage albedoImage;
-	VkDeviceMemory albedoImageMemory;
-	VkImageView albedoImageView;
-	VkSampler albedoImageSampler;
-	// Normal
-	VkImage normalImage;
-	VkDeviceMemory normalImageMemory;
-	VkImageView normalImageView;
-	VkSampler normalImageSampler;
 	// Depth
 	VkImage depthImage;
 	VkDeviceMemory depthImageMemory;
@@ -158,20 +148,14 @@ private:
 		CreateFrameBuffers();
 		CreateSyncObjects();
 
-		CreateTexture(albedoTextureDir, albedoImage, albedoImageMemory, albedoImageView, albedoImageSampler);
-		CreateTexture(normalTextureDir, normalImage, normalImageMemory, normalImageView, normalImageSampler);
+		testObject = new Object(device, testModelDir.c_str(), albedoTextureDir.c_str(), normalTextureDir.c_str());
+		testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
 
-		//testObject = new Object(device, testModelDir.c_str());
-		//testObject->CreateUniformBuffers();
-		//testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
+		Bulb = new Object(device, testModelDir.c_str(), albedoTextureDir.c_str(), normalTextureDir.c_str());
+		Bulb->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
 
-		Bulb = new Object(device, testModelDir.c_str());
-		Bulb->CreateUniformBuffers();
-		Bulb->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
-
-		testCube = new Object(device, testCubeDir.c_str());
-		testCube->CreateUniformBuffers();
-		testCube->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
+		//testCube = new Object(device, testCubeDir.c_str());
+		//testCube->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
 
 		commandBuffers = CrateCommandBuffers();
 	}
@@ -197,16 +181,16 @@ private:
 		CreateDepthResources();
 		CreateFrameBuffers();
 		CreateDescriptorPool(3);
-		//testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
-		testCube->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
-		Bulb->CreateDescriptorSets(descriptorPool, descriptorSetLayout, albedoImageView, albedoImageSampler, normalImageView, normalImageSampler);
+		testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
+		//testCube->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
+		Bulb->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
 		commandBuffers = CrateCommandBuffers();
 	}
 
 	#pragma region Object
 
 	// Mind the alignment
-	struct UniformBufferObject {
+	struct MvpInfo {
 		alignas(16) glm::mat4 model;
 		alignas(16) glm::mat4 view;
 		alignas(16) glm::mat4 proj;
@@ -240,21 +224,21 @@ private:
 				VK_SHADER_STAGE_VERTEX_BIT,
 				0
 			),
-			skel::initializers::DescriptorSetLyoutBinding(
-				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				VK_SHADER_STAGE_FRAGMENT_BIT,
-				1
-			),
+			//skel::initializers::DescriptorSetLyoutBinding(
+			//	VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			//	VK_SHADER_STAGE_FRAGMENT_BIT,
+			//	1
+			//),
 			skel::initializers::DescriptorSetLyoutBinding(
 				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 				VK_SHADER_STAGE_FRAGMENT_BIT,
-				2
+				1
 			),
-			skel::initializers::DescriptorSetLyoutBinding(
-				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				VK_SHADER_STAGE_FRAGMENT_BIT,
-				3
-			)
+			//skel::initializers::DescriptorSetLyoutBinding(
+			//	VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			//	VK_SHADER_STAGE_FRAGMENT_BIT,
+			//	3
+			//)
 		};
 
 		VkDescriptorSetLayoutCreateInfo createInfo = {};
@@ -271,9 +255,9 @@ private:
 	{
 		std::vector<VkDescriptorPoolSize> poolSizes = {
 			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),			// UBO
-			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount),	// Albeto
 			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),			// Light
-			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount)		// Normal
+			//skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount),	// Albeto Map
+			//skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount)		// Normal Map
 		};
 
 		VkDescriptorPoolCreateInfo createInfo = {};
@@ -508,6 +492,7 @@ private:
 	void CreateCommandPools()
 	{
 		graphicsCommandPoolIndex = device->CreateCommandPool(device->queueFamilyIndices.graphics, 0);
+		device->graphicsCommandPoolIndex = graphicsCommandPoolIndex;
 	}
 
 	// Creates the Vulkan Swapchain object
@@ -569,7 +554,7 @@ private:
 
 		for (uint32_t i = 0; i < imageCount; i++)
 		{
-			swapchainImageViews[i] = CreateImageView(swapchainImages[i], swapchainFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+			swapchainImageViews[i] = skel::CreateImageView(device, swapchainImages[i], swapchainFormat, VK_IMAGE_ASPECT_COLOR_BIT);
 		}
 	}
 
@@ -791,10 +776,11 @@ private:
 		CreatePipelineLayout();
 
 	// ===== Shader Stage =====
+		// Normal =====
 		std::vector<char> vertFile = LoadFile(vertShaderDir.c_str());
 		std::vector<char> fragFile = LoadFile(fragShaderDir.c_str());
-		vertShaderModule = CreateShaderModule(vertFile);
-		fragShaderModule = CreateShaderModule(fragFile);
+		VkShaderModule vertShaderModule = CreateShaderModule(vertFile);
+		VkShaderModule fragShaderModule = CreateShaderModule(fragFile);
 
 		VkPipelineShaderStageCreateInfo vertShaderStageInfo =
 			skel::initializers::PipelineShaderStageCreateInfo(
@@ -812,6 +798,28 @@ private:
 			fragShaderStageInfo
 		};
 
+		// Unlit =====
+		std::vector<char> unlitVertFile = LoadFile(unlitVertShaderDir.c_str());
+		std::vector<char> unlitFragFile = LoadFile(unlitFragShaderDir.c_str());
+		VkShaderModule unlitVertShaderModule = CreateShaderModule(unlitVertFile);
+		VkShaderModule unlitFragShaderModule = CreateShaderModule(unlitFragFile);
+
+		VkPipelineShaderStageCreateInfo unlitVertShaderStageInfo =
+			skel::initializers::PipelineShaderStageCreateInfo(
+				VK_SHADER_STAGE_VERTEX_BIT,
+				unlitVertShaderModule
+			);
+		VkPipelineShaderStageCreateInfo unlitFragShaderStageInfo =
+			skel::initializers::PipelineShaderStageCreateInfo(
+				VK_SHADER_STAGE_FRAGMENT_BIT,
+				unlitFragShaderModule
+			);
+
+		std::vector<VkPipelineShaderStageCreateInfo> unlitShaderStages = {
+			unlitVertShaderStageInfo,
+			unlitFragShaderStageInfo
+		};
+
 	// ===== Pipeline Creation =====
 		VkGraphicsPipelineCreateInfo pipelineCreateInfo = 
 			skel::initializers::GraphicsPipelineCreateInfo(
@@ -827,15 +835,27 @@ private:
 		pipelineCreateInfo.pDepthStencilState	= &depthStencilState;
 		pipelineCreateInfo.pColorBlendState		= &colorBlendState;
 		pipelineCreateInfo.pDynamicState		= &dynamicState;
-		pipelineCreateInfo.stageCount			= static_cast<uint32_t>(shaderStages.size());
-		pipelineCreateInfo.pStages				= shaderStages.data();
 
+
+		// Normal =====
+		pipelineCreateInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
+		pipelineCreateInfo.pStages = shaderStages.data();
 
 		if (vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline) != VK_SUCCESS)
 			throw std::runtime_error("Failed to create graphics pipeline");
 
 		vkDestroyShaderModule(device->logicalDevice, vertShaderModule, nullptr);
 		vkDestroyShaderModule(device->logicalDevice, fragShaderModule, nullptr);
+
+		// Unlit =====
+		pipelineCreateInfo.stageCount = static_cast<uint32_t>(unlitShaderStages.size());
+		pipelineCreateInfo.pStages = unlitShaderStages.data();
+
+		if (vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1, &pipelineCreateInfo, nullptr, &unlitPipeline) != VK_SUCCESS)
+			throw std::runtime_error("Failed to create unlit pipeline");
+
+		vkDestroyShaderModule(device->logicalDevice, unlitVertShaderModule, nullptr);
+		vkDestroyShaderModule(device->logicalDevice, unlitFragShaderModule, nullptr);
 	}
 
 	// Binds shader uniforms
@@ -909,215 +929,6 @@ private:
 	}
 
 // ==============================================
-// Create texture
-// ==============================================
-
-	void CreateTexture(const std::string _dir, VkImage& _image, VkDeviceMemory& _imageMemory, VkImageView& _imageView, VkSampler& _imageSampler)
-	{
-		CreateTextureImage(_dir, _image, _imageMemory);
-		CreateTextureImageView(_image, _imageView);
-		CreateTextureSampler(_imageSampler);
-	}
-
-	void CreateTextureImage(const std::string _directory, VkImage& _image, VkDeviceMemory& _imageMemory)
-	{
-		int textureWidth, textureHeight, textureChannels;
-		stbi_uc* pixels = stbi_load(_directory.c_str(), &textureWidth, &textureHeight, &textureChannels, STBI_rgb_alpha);
-		VkDeviceSize imageSize = (uint64_t)textureWidth * (uint64_t)textureHeight * 4;
-
-		if (!pixels)
-			throw std::runtime_error("Failed to load texture image");
-
-		VkBuffer stagingBuffer;
-		VkDeviceMemory stagingBufferMemory;
-		device->CreateBuffer(
-			imageSize,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			stagingBuffer,
-			stagingBufferMemory
-		);
-
-		CopyDataToBufferMemory(pixels, (size_t)imageSize, stagingBufferMemory);
-		stbi_image_free(pixels);
-
-		CreateImage(
-			(uint32_t)textureWidth,
-			(uint32_t)textureHeight,
-			VK_FORMAT_R8G8B8A8_SRGB,
-			VK_IMAGE_TILING_OPTIMAL,
-			VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			_image,
-			_imageMemory
-		);
-
-		TransitionImageLayout(_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-		CopyBufferToImage(stagingBuffer, _image, (uint32_t)textureWidth, (uint32_t)textureHeight);
-		TransitionImageLayout(_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-		vkDestroyBuffer(device->logicalDevice, stagingBuffer, nullptr);
-		vkFreeMemory(device->logicalDevice, stagingBufferMemory, nullptr);
-	}
-
-	uint32_t FindMemoryType(uint32_t _typeFilter, VkMemoryPropertyFlags _properties)
-	{
-		VkPhysicalDeviceMemoryProperties memoryProperties;
-		vkGetPhysicalDeviceMemoryProperties(device->physicalDevice, &memoryProperties);
-
-		for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++)
-		{
-			if ((_typeFilter & (1 << i)) && (memoryProperties.memoryTypes[i].propertyFlags & _properties) == _properties)
-				return i;
-		}
-
-		throw std::runtime_error("Failed to find suitable memory type");
-	}
-
-	void CreateImage(uint32_t _width, uint32_t _height, VkFormat _format, VkImageTiling _tiling, VkImageUsageFlags _usage, VkMemoryPropertyFlags _properties, VkImage& _image, VkDeviceMemory& _imageMemory)
-	{
-		VkImageCreateInfo createInfo = {};
-		createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-		createInfo.imageType = VK_IMAGE_TYPE_2D;
-		createInfo.extent.width = _width;
-		createInfo.extent.height = _height;
-		createInfo.extent.depth = 1;
-		createInfo.mipLevels = 1;
-		createInfo.arrayLayers = 1;
-		createInfo.format = _format;
-		createInfo.tiling = _tiling;
-		createInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		createInfo.usage = _usage;
-		createInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-		createInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-		if (vkCreateImage(device->logicalDevice, &createInfo, nullptr, &_image) != VK_SUCCESS)
-			throw std::runtime_error("Failed to crate image");
-
-		VkMemoryRequirements memoryRequirements;
-		vkGetImageMemoryRequirements(device->logicalDevice, _image, &memoryRequirements);
-		VkMemoryAllocateInfo allocInfo = {};
-		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-		allocInfo.allocationSize = memoryRequirements.size;
-		allocInfo.memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, _properties);
-
-		if (vkAllocateMemory(device->logicalDevice, &allocInfo, nullptr, &_imageMemory) != VK_SUCCESS)
-			throw std::runtime_error("Failed to allocate image memory");
-
-		vkBindImageMemory(device->logicalDevice, _image, _imageMemory, 0);
-	}
-
-	VkImageView CreateImageView(VkImage _image, VkFormat _format, VkImageAspectFlags _aspectFlags)
-	{
-		VkImageViewCreateInfo viewInfo = {};
-		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		viewInfo.image = _image;
-		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		viewInfo.format = _format;
-		viewInfo.subresourceRange.aspectMask = _aspectFlags;
-		viewInfo.subresourceRange.baseMipLevel = 0;
-		viewInfo.subresourceRange.levelCount = 1;
-		viewInfo.subresourceRange.baseArrayLayer = 0;
-		viewInfo.subresourceRange.layerCount = 1;
-
-		VkImageView imageView;
-		if (vkCreateImageView(device->logicalDevice, &viewInfo, nullptr, &imageView) != VK_SUCCESS)
-			throw std::runtime_error("Failed to create image view");
-
-		return imageView;
-	}
-
-	void CopyBufferToImage(VkBuffer _buffer, VkImage _image, uint32_t _width, uint32_t _height)
-	{
-		VkCommandBuffer commandBuffer = device->BeginSingleTimeCommands(device->transientPoolIndex);
-
-		VkBufferImageCopy region = {};
-		region.bufferOffset = 0;
-		region.bufferRowLength = 0;
-		region.bufferImageHeight = 0;
-		region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		region.imageSubresource.mipLevel = 0;
-		region.imageSubresource.baseArrayLayer = 0;
-		region.imageSubresource.layerCount = 1;
-		region.imageOffset = {0, 0, 0};
-		region.imageExtent = {_width, _height, 1};
-
-		vkCmdCopyBufferToImage(commandBuffer, _buffer, _image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-
-		device->EndSingleTimeCommands(commandBuffer, device->transientPoolIndex, device->transferQueue);
-	}
-
-	void CreateTextureImageView(VkImage& _image, VkImageView& _imageView)
-	{
-		_imageView = CreateImageView(_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
-	}
-
-	void CreateTextureSampler(VkSampler& _imageSampler)
-	{
-		VkSamplerCreateInfo createInfo = {};
-		createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-		createInfo.magFilter = VK_FILTER_LINEAR;
-		createInfo.minFilter = VK_FILTER_LINEAR;
-		createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-		createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-		createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-		createInfo.anisotropyEnable = VK_TRUE;
-		createInfo.maxAnisotropy = 16.0f;
-		createInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-		createInfo.unnormalizedCoordinates = VK_FALSE;
-		createInfo.compareEnable = VK_FALSE;
-		createInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-		createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-		createInfo.mipLodBias = 0.0f;
-		createInfo.minLod = 0.0f;
-		createInfo.maxLod = 0.0f;
-
-		if (vkCreateSampler(device->logicalDevice, &createInfo, nullptr, &_imageSampler) != VK_SUCCESS)
-			throw std::runtime_error("Failed to create texture sampler");
-	}
-
-	void TransitionImageLayout(VkImage _image, VkFormat _format, VkImageLayout _oldLayout, VkImageLayout _newLayout)
-	{
-		VkCommandBuffer commandBuffer = device->BeginSingleTimeCommands(graphicsCommandPoolIndex);
-
-		VkPipelineStageFlags srcStage;
-		VkPipelineStageFlags dstStage;
-
-		VkImageMemoryBarrier barrier = {};
-		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		barrier.oldLayout = _oldLayout;
-		barrier.newLayout = _newLayout;
-		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // For Queue family transfer
-		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; // For Queue family transfer
-		barrier.image = _image;
-		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		barrier.subresourceRange.baseMipLevel = 0;
-		barrier.subresourceRange.levelCount = 1;
-		barrier.subresourceRange.baseArrayLayer = 0;
-		barrier.subresourceRange.layerCount = 1;
-
-		if (_oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && _newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-		{
-			barrier.srcAccessMask = 0;
-			barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-			srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-			dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-		}
-		else if (_oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && _newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-		{
-			barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-			srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-			dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-		}
-		else
-			throw std::invalid_argument("Unsupported layout transition");
-
-		vkCmdPipelineBarrier(commandBuffer, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-		device->EndSingleTimeCommands(commandBuffer, graphicsCommandPoolIndex, device->graphicsQueue);
-	}
-
-// ==============================================
 // Create Depth test
 // ==============================================
 
@@ -1125,7 +936,8 @@ private:
 	{
 		VkFormat depthFormat = FindDepthFormat();
 
-		CreateImage(
+		skel::CreateImage(
+			device,
 			swapchainExtent.width,
 			swapchainExtent.height,
 			depthFormat,
@@ -1135,7 +947,7 @@ private:
 			depthImage,
 			depthImageMemory
 			);
-		depthImageView = CreateImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+		depthImageView = skel::CreateImageView(device, depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 	}
 
 	VkFormat FindDepthFormat()
@@ -1205,8 +1017,10 @@ private:
 
 			vkCmdBindPipeline(cmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
-			//testObject->Draw(cmdBuffers[i], pipelineLayout);
-			testCube->Draw(cmdBuffers[i], pipelineLayout);
+			testObject->Draw(cmdBuffers[i], pipelineLayout);
+			//testCube->Draw(cmdBuffers[i], pipelineLayout);
+
+			vkCmdBindPipeline(cmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, unlitPipeline);
 			Bulb->Draw(cmdBuffers[i], pipelineLayout);
 
 			EndCommandBuffer(cmdBuffers[i]);
@@ -1391,21 +1205,21 @@ private:
 	void UpdateUniformBuffer(uint32_t _currentFrame)
 	{
 	// UBO
-		UniformBufferObject ubo;
+		MvpInfo mvp;
 
-		ubo.view = cam.view;
-		ubo.camPosition = cam.cameraPosition;
+		mvp.view = cam.view;
+		mvp.camPosition = cam.cameraPosition;
 
 		//ubo.model = glm::mat4(1.0f);
 		//ubo.model = glm::rotate(glm::mat4(1.0f), time.totalTime * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-		ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(glm::sin(time.totalTime) * 30.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-		ubo.proj = glm::perspective(glm::radians(45.0f), swapchainExtent.width / (float)swapchainExtent.height, 0.1f, 100.0f);
-		ubo.proj[1][1] *= -1;
+		mvp.model = glm::rotate(glm::mat4(1.0f), glm::radians(glm::sin(time.totalTime) * 30.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		mvp.proj = glm::perspective(glm::radians(45.0f), swapchainExtent.width / (float)swapchainExtent.height, 0.1f, 100.0f);
+		mvp.proj[1][1] *= -1;
 
-		//CopyDataToBufferMemory(&ubo, sizeof(ubo), testObject->uboBufferMemory);
+		device->CopyDataToBufferMemory(&mvp, sizeof(mvp), testObject->mvpBufferMemory);
 
-		ubo.model = glm::scale(ubo.model, glm::vec3(0.75f)); // Make the cube smaller to see the sphere
-		CopyDataToBufferMemory(&ubo, sizeof(ubo), testCube->uboBufferMemory);
+		//ubo.model = glm::scale(ubo.model, glm::vec3(0.75f)); // Make the cube smaller to see the sphere
+		//CopyDataToBufferMemory(&ubo, sizeof(ubo), testCube->uboBufferMemory);
 
 	// LIGHT
 		LightInformation light = {};
@@ -1413,23 +1227,23 @@ private:
 		//light.position = {0.0f, glm::sin(time.totalTime), (glm::cos(time.totalTime) * 0.5f + 1.5f)};
 		light.position = {0.0f, 0.0f, 3.0f};
 
-		//CopyDataToBufferMemory(&light, sizeof(LightInformation), testObject->lightBufferMemory);
-		CopyDataToBufferMemory(&light, sizeof(LightInformation), testCube->lightBufferMemory);
-		CopyDataToBufferMemory(&light, sizeof(LightInformation), Bulb->lightBufferMemory);
+		device->CopyDataToBufferMemory(&light, sizeof(LightInformation), testObject->lightBufferMemory);
+		//CopyDataToBufferMemory(&light, sizeof(LightInformation), testCube->lightBufferMemory);
+		device->CopyDataToBufferMemory(&light, sizeof(LightInformation), Bulb->lightBufferMemory);
 
-		ubo.model = glm::translate(glm::mat4(1.0f), light.position);
-		ubo.model = glm::scale(ubo.model, glm::vec3(0.1f));
-		CopyDataToBufferMemory(&ubo, sizeof(ubo), Bulb->uboBufferMemory);
+		mvp.model = glm::translate(glm::mat4(1.0f), light.position);
+		mvp.model = glm::scale(mvp.model, glm::vec3(0.1f));
+		device->CopyDataToBufferMemory(&mvp, sizeof(mvp), Bulb->mvpBufferMemory);
 	}
 
 	// Maps buffer memory and copies input data to it
-	void CopyDataToBufferMemory(const void* _srcData, VkDeviceSize _size, VkDeviceMemory& _memory, VkDeviceSize _offset = 0, VkMemoryMapFlags _flags = 0)
-	{
-		void* tmpData;
-		vkMapMemory(device->logicalDevice, _memory, _offset, _size, _flags, &tmpData);
-		memcpy(tmpData, _srcData, _size);
-		vkUnmapMemory(device->logicalDevice, _memory);
-	}
+	//void CopyDataToBufferMemory(const void* _srcData, VkDeviceSize _size, VkDeviceMemory& _memory, VkDeviceSize _offset = 0, VkMemoryMapFlags _flags = 0)
+	//{
+	//	void* tmpData;
+	//	vkMapMemory(device->logicalDevice, _memory, _offset, _size, _flags, &tmpData);
+	//	memcpy(tmpData, _srcData, _size);
+	//	vkUnmapMemory(device->logicalDevice, _memory);
+	//}
 
 // ==============================================
 // Cleanup
@@ -1450,6 +1264,7 @@ private:
 		vkFreeCommandBuffers(device->logicalDevice, device->commandPools[graphicsCommandPoolIndex], (uint32_t)commandBuffers.size(), commandBuffers.data());
 
 		vkDestroyPipeline(device->logicalDevice, pipeline, nullptr);
+		vkDestroyPipeline(device->logicalDevice, unlitPipeline, nullptr);
 		vkDestroyPipelineLayout(device->logicalDevice, pipelineLayout, nullptr);
 		vkDestroyRenderPass(device->logicalDevice, renderPass, nullptr);
 
@@ -1464,22 +1279,11 @@ private:
 	{
 		CleanupSwapchain();
 
-		//delete(testObject);
-		delete(testCube);
+		delete(testObject);
+		//delete(testCube);
 		delete(Bulb);
 
 		vkDestroyDescriptorSetLayout(device->logicalDevice, descriptorSetLayout, nullptr);
-
-		// Albedo
-		vkDestroySampler(device->logicalDevice, albedoImageSampler, nullptr);
-		vkDestroyImageView(device->logicalDevice, albedoImageView, nullptr);
-		vkDestroyImage(device->logicalDevice, albedoImage, nullptr);
-		vkFreeMemory(device->logicalDevice, albedoImageMemory, nullptr);
-		// Normal
-		vkDestroySampler(device->logicalDevice, normalImageSampler, nullptr);
-		vkDestroyImageView(device->logicalDevice, normalImageView, nullptr);
-		vkDestroyImage(device->logicalDevice, normalImage, nullptr);
-		vkFreeMemory(device->logicalDevice, normalImageMemory, nullptr);
 
 		for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{

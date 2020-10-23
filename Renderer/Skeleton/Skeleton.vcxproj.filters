@@ -35,6 +35,9 @@
     <ClInclude Include="src\Initializers.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\Texture.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="res\default.frag" />
@@ -43,8 +46,8 @@
     <None Include="res\shaders\default.vert" />
     <None Include="res\shaders\PBR.frag" />
     <None Include="res\shaders\PBR.vert" />
-    <None Include="res\shaders\phongShading.frag" />
-    <None Include="res\shaders\phongShading.vert" />
+    <None Include="res\shaders\unlit.frag" />
+    <None Include="res\shaders\unlit.vert" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="NOTES.txt" />

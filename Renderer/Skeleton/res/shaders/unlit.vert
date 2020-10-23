@@ -20,7 +20,7 @@ layout(location = 3) out vec3 outCamPos;	// camera position in world-space
 void main() {
 	gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
 	outPos = mat3(ubo.model) * inPosition;
-	outNormal = mat3(inverse(transpose(ubo.model))) * inNormal;
+	outNormal = inNormal;
 	outTexCoord = inTexCoord;
 	outCamPos = ubo.camPosition;
 }

@@ -22,6 +22,7 @@ struct VulkanDevice
 
 	std::vector<VkCommandPool> commandPools;
 	uint32_t transientPoolIndex;
+	uint32_t graphicsCommandPoolIndex;
 
 	struct {
 		uint32_t graphics;
@@ -239,72 +240,37 @@ struct VulkanDevice
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &_commandBuffer;
 
-		// TODO : Use transfer queue & a fence (not queueWaitIdle)
+// TODO : Use transfer queue & a fence (not queueWaitIdle)
 		vkQueueSubmit(_queue, 1, &submitInfo, VK_NULL_HANDLE);
 		vkQueueWaitIdle(_queue);
 		vkFreeCommandBuffers(logicalDevice, commandPools[_poolIndex], 1, &_commandBuffer);
 	}
 
-
-	// Creates a buffer in GPU memory for the Verts vector
-	// Copies the Verts vector into the buffer
-	void CreateVertexBuffer(const std::vector<Vertex> _vertices, VkBuffer& _buffer, VkDeviceMemory& _memory)
+	// Creates a buffer in GPU memory for the input data
+	// Copies the input data into the buffer with a staging buffer
+	void CreateAndFillBuffer(const void* _data, VkDeviceSize _size, VkBuffer& _buffer, VkDeviceMemory& _memory, VkBufferUsageFlags _usage, VkMemoryPropertyFlags _memProps)
 	{
-		VkDeviceSize bufferSize = sizeof(_vertices[0]) * (uint32_t)_vertices.size();
-
 		VkBuffer stagingBuffer;
 		VkDeviceMemory stagingBufferMemory;
 		CreateBuffer(
-			bufferSize,
+			_size,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			stagingBuffer,
 			stagingBufferMemory
 		);
 
-		CopyDataToBufferMemory(_vertices.data(), bufferSize, stagingBufferMemory);
+		CopyDataToBufferMemory(_data, _size, stagingBufferMemory);
 
 		CreateBuffer(
-			bufferSize,
-			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+			_size,
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT | _usage,
+			_memProps,
 			_buffer,
 			_memory
 		);
 
-		CopyBuffer(stagingBuffer, _buffer, bufferSize);
-
-		vkDestroyBuffer(logicalDevice, stagingBuffer, nullptr);
-		vkFreeMemory(logicalDevice, stagingBufferMemory, nullptr);
-	}
-
-	// Creates a buffer in GPU memory for the Indices vector
-	// Copies the Indices vector into the buffer
-	void CreateIndexBuffer(const std::vector<uint32_t> _indices, VkBuffer& _buffer, VkDeviceMemory& _memory)
-	{
-		VkDeviceSize bufferSize = sizeof(_indices[0]) * (uint32_t)_indices.size();
-
-		VkBuffer stagingBuffer;
-		VkDeviceMemory stagingBufferMemory;
-		CreateBuffer(
-			bufferSize,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			stagingBuffer,
-			stagingBufferMemory
-		);
-
-		CopyDataToBufferMemory(_indices.data(), bufferSize, stagingBufferMemory);
-
-		CreateBuffer(
-			bufferSize,
-			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-			_buffer,
-			_memory
-		);
-
-		CopyBuffer(stagingBuffer, _buffer, bufferSize);
+		CopyBuffer(stagingBuffer, _buffer, _size);
 
 		vkDestroyBuffer(logicalDevice, stagingBuffer, nullptr);
 		vkFreeMemory(logicalDevice, stagingBufferMemory, nullptr);
