@@ -31,6 +31,8 @@ layout(set = 0, binding = 1) uniform LightInfos
 	PointLightInfo pointLights[4];
 	SpotLightInfo spotlights[2];
 }lights;
+layout(set = 0, binding = 2) uniform sampler2D AlbedoSampler;
+layout(set = 0, binding = 3) uniform sampler2D NormalSampler;
 
 layout(location = 0) in vec3 inPos;			// fragment position in world-space
 layout(location = 1) in vec3 inNormal;		// fragment normal in model space
@@ -107,15 +109,32 @@ vec3 CalculateSpotlightContribution(SpotLightInfo li, vec3 N, vec3 V)
 	return ambient;
 }
 
+vec3 TransformNormalMapToModel()
+{
+	vec3 tangetNormal = texture(NormalSampler, inTexCoord).xyz * 2.0 - 1.0;
+
+	vec3 q1 = dFdx(inPos);
+	vec3 q2 = dFdy(inPos);
+	vec2 st1 = dFdx(inTexCoord);
+	vec2 st2 = dFdy(inTexCoord);
+
+	vec3 N = normalize(inNormal);
+	vec3 T = normalize(q1 * st2.y - q2 * st1.y);
+	vec3 B = normalize(cross(N, T));
+	mat3 TBN = mat3(T, B, N);
+
+	return normalize(TBN * tangetNormal);
+}
+
 void main()
 {
-	//vec3 objectColor = vec3(0.7, 0.3, 1.0);
-	vec3 objectColor= vec3(1.0);
+	vec3 objectColor= texture(AlbedoSampler, inTexCoord).xyz;
 	vec3 finalLight = vec3(0.0);
 	vec3 final = vec3(0.0);
 
 // TODO : http://www.lighthouse3d.com/tutorials/glsl-12-tutorial/the-normal-matrix/
-	vec3 N = normalize(inNormal);
+	
+	vec3 N = TransformNormalMapToModel();
 	vec3 V = normalize(inCamPos - inPos);
 
 //	finalLight += CalculateDirectionalLightContribution(lights.directionalLight, N, V);

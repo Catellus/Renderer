@@ -148,10 +148,10 @@ public:
 		if (vkAllocateDescriptorSets(device->logicalDevice, &allocInfo, &descriptorSet) != VK_SUCCESS)
 			throw std::runtime_error("Failed to create descriptor sets");
 
-		VkDescriptorBufferInfo uboInfo = {};
-		uboInfo.offset = 0;
-		uboInfo.range = VK_WHOLE_SIZE; //sizeof(skel::MvpInfo);
-		uboInfo.buffer = mvpBuffer;
+		VkDescriptorBufferInfo mvpInfo = {};
+		mvpInfo.offset = 0;
+		mvpInfo.range = VK_WHOLE_SIZE; //sizeof(skel::MvpInfo);
+		mvpInfo.buffer = mvpBuffer;
 
 		VkDescriptorImageInfo albedoInfo = {};
 		albedoInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -170,26 +170,26 @@ public:
 
 
 		std::vector<VkWriteDescriptorSet> descriptorWrites = {
-			skel::initializers::WriteDescriptorSet(
+			skel::initializers::WriteDescriptorSet(	// MVP matrices
 				descriptorSet,
 				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-				&uboInfo,
+				&mvpInfo,
 				0),
-			//skel::initializers::WriteDescriptorSet(
-			//	descriptorSet,
-			//	VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			//	&albedoInfo,
-			//	1),
-			skel::initializers::WriteDescriptorSet(
+			skel::initializers::WriteDescriptorSet(	// Light infos
 				descriptorSet,
 				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 				&lightInfo,
 				1),
-			//skel::initializers::WriteDescriptorSet(
-			//	descriptorSet,
-			//	VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			//	&normalInfo,
-			//	3),
+			skel::initializers::WriteDescriptorSet(	// Albedo map
+				descriptorSet,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				&albedoInfo,
+				2),
+			skel::initializers::WriteDescriptorSet(	// Normal map
+				descriptorSet,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				&normalInfo,
+				3),
 		};
 
 		vkUpdateDescriptorSets(device->logicalDevice, (uint32_t)descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);

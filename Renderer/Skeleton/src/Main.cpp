@@ -46,7 +46,7 @@ private:
 	const std::string fragShaderDir = SHADER_DIR + "default_frag.spv";
 	const std::string unlitVertShaderDir = SHADER_DIR + "unlit_vert.spv";
 	const std::string unlitFragShaderDir = SHADER_DIR + "unlit_frag.spv";
-	const std::string albedoTextureDir = TEXTURE_DIR + "TestNormalMap.png";
+	const std::string albedoTextureDir = TEXTURE_DIR + "UvTest.png";
 	const std::string normalTextureDir = TEXTURE_DIR + "TestNormalMap.png";
 	const std::string testModelDir = MODEL_DIR + "Cube.obj";
 	Mesh testMesh;
@@ -165,7 +165,7 @@ private:
 		float circleIncrement = (2.0f * 3.14159f) / static_cast<uint32_t>(testObjects.size());
 		for (auto& testObject : testObjects)
 		{
-			testObject = new Object(device, testModelDir.c_str(), nullptr, nullptr);
+			testObject = new Object(device, testModelDir.c_str(), albedoTextureDir.c_str(), normalTextureDir.c_str());
 			testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
 			testObject->transform.position.x = glm::cos(index * circleIncrement);
 			testObject->transform.position.y = glm::sin(index * circleIncrement);
@@ -233,26 +233,26 @@ private:
 	void CreateDescriptorSetLayout()
 	{
 		std::vector<VkDescriptorSetLayoutBinding> layoutBindings = {
-			skel::initializers::DescriptorSetLyoutBinding(
+			skel::initializers::DescriptorSetLyoutBinding(	// MVP matrices
 				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 				VK_SHADER_STAGE_VERTEX_BIT,
 				0
 			),
-			//skel::initializers::DescriptorSetLyoutBinding(
-			//	VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			//	VK_SHADER_STAGE_FRAGMENT_BIT,
-			//	1
-			//),
-			skel::initializers::DescriptorSetLyoutBinding(
+			skel::initializers::DescriptorSetLyoutBinding(	// Light infos
 				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 				VK_SHADER_STAGE_FRAGMENT_BIT,
 				1
 			),
-			//skel::initializers::DescriptorSetLyoutBinding(
-			//	VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			//	VK_SHADER_STAGE_FRAGMENT_BIT,
-			//	3
-			//)
+			skel::initializers::DescriptorSetLyoutBinding(	// Albedo map
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				VK_SHADER_STAGE_FRAGMENT_BIT,
+				2
+			),
+			skel::initializers::DescriptorSetLyoutBinding(	// Normal map
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				VK_SHADER_STAGE_FRAGMENT_BIT,
+				3
+			)
 		};
 
 		VkDescriptorSetLayoutCreateInfo createInfo = {};
@@ -270,8 +270,8 @@ private:
 		std::vector<VkDescriptorPoolSize> poolSizes = {
 			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),			// UBO
 			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),			// Light
-			//skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount),	// Albeto Map
-			//skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount)		// Normal Map
+			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount),	// Albeto Map
+			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount)		// Normal Map
 		};
 
 		VkDescriptorPoolCreateInfo createInfo = {};
