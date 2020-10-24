@@ -6,10 +6,10 @@
 #include "VulkanDevice.h"
 #include "Mesh.h"
 #include "Texture.h"
+#include "Lights.h"
 
-class Object
+namespace skel
 {
-private:
 	struct MvpInfo {
 		alignas(16) glm::mat4 model;
 		alignas(16) glm::mat4 view;
@@ -17,12 +17,16 @@ private:
 		alignas(16) glm::vec3 camPosition;
 	};
 
-	struct LightInformation {
-		alignas(16) glm::vec3 color;
-		alignas(16) glm::vec3 position;
+	struct Transform {
+		glm::vec3 position	= { 0.0f, 0.0f, 0.0f };
+		glm::vec3 rotation	= { 0.0f, 0.0f, 0.0f };
+		glm::vec3 scale		= { 1.0f, 1.0f, 1.0f };
 	};
+}
 
-public:
+class Object
+{
+private:
 	VulkanDevice* device;
 	Mesh mesh;
 
@@ -30,11 +34,6 @@ public:
 	VkDeviceMemory vertexBufferMemory;
 	VkBuffer indexBuffer;
 	VkDeviceMemory indexBufferMemory;
-
-	VkBuffer mvpBuffer;
-	VkDeviceMemory mvpBufferMemory;
-	VkBuffer lightBuffer;
-	VkDeviceMemory lightBufferMemory;
 
 	// Albedo
 	VkImage albedoImage;
@@ -49,9 +48,20 @@ public:
 
 	VkDescriptorSet descriptorSet;
 
+	skel::MvpInfo mvp;
+	VkBuffer mvpBuffer;
+	VkDeviceMemory mvpBufferMemory;
+
+public:
+	skel::Transform transform;
+	VkBuffer lightBuffer;
+	VkDeviceMemory lightBufferMemory;
+
 public:
 	Object(VulkanDevice* _device, const char* _modelDirectory, const char* _albedoDirectory, const char* _normalDirectory) : device(_device)
 	{
+		mvp.model = glm::mat4(1.0f);
+
 		mesh = LoadMesh(_modelDirectory);
 		device->CreateAndFillBuffer(
 			mesh.vertices.data(),
@@ -107,8 +117,8 @@ public:
 
 	void CreateUniformBuffers()
 	{
-		VkDeviceSize mvpBufferSize = sizeof(MvpInfo);
-		VkDeviceSize lightBufferSize = sizeof(LightInformation);
+		VkDeviceSize mvpBufferSize = sizeof(skel::MvpInfo);
+		VkDeviceSize lightBufferSize = sizeof(skel::lights::SpotLight);
 
 		device->CreateBuffer(
 			mvpBufferSize,
@@ -140,7 +150,7 @@ public:
 
 		VkDescriptorBufferInfo uboInfo = {};
 		uboInfo.offset = 0;
-		uboInfo.range = sizeof(MvpInfo);
+		uboInfo.range = sizeof(skel::MvpInfo);
 		uboInfo.buffer = mvpBuffer;
 
 		VkDescriptorImageInfo albedoInfo = {};
@@ -150,7 +160,7 @@ public:
 
 		VkDescriptorBufferInfo lightInfo = {};
 		lightInfo.offset = 0;
-		lightInfo.range = sizeof(LightInformation);
+		lightInfo.range = sizeof(skel::lights::SpotLight);
 		lightInfo.buffer = lightBuffer;
 
 		VkDescriptorImageInfo normalInfo = {};
@@ -192,6 +202,19 @@ public:
 		vkCmdBindIndexBuffer(_commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 		vkCmdBindDescriptorSets(_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 		vkCmdDrawIndexed(_commandBuffer, (uint32_t)mesh.indices.size(), 1, 0, 0, 0);
+	}
+
+	void UpdateMVPBuffer(glm::vec3 _camPosition, glm::mat4 _projection, glm::mat4 _view)
+	{
+		mvp.model = glm::translate(glm::mat4(1.0f), transform.position);
+		glm::fquat rotationQuaternion = {glm::radians(transform.rotation)};
+		mvp.model *= glm::mat4_cast(rotationQuaternion);
+		mvp.model = glm::scale(mvp.model, transform.scale);
+
+		mvp.view		= _view;
+		mvp.proj		= _projection;
+		mvp.camPosition = _camPosition;
+		device->CopyDataToBufferMemory(&mvp, sizeof(mvp), mvpBufferMemory);
 	}
 
 };

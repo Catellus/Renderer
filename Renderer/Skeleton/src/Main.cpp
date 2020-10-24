@@ -25,6 +25,8 @@
 #include "Object.h"
 #include "Initializers.h"
 #include "Texture.h"
+#include "Lights.h"
+#include "Camera.h"
 
 // TODO : Fix normal re-calculation (Normals spiraling @ top/bottom of sphere)
 
@@ -60,6 +62,11 @@ private:
 			return formats.size() && presentModes.size();
 		}
 	};
+
+	struct ApplicationTimeInformation {
+		float totalTime;
+		float deltaTime;
+	} time;
 
 	std::vector<const char*> instanceLayers = { "VK_LAYER_KHRONOS_validation" };
 	std::vector<const char*> instanceExtensions = {};
@@ -113,8 +120,10 @@ private:
 	VkDeviceMemory depthImageMemory;
 	VkImageView depthImageView;
 
-	Object* testObject;
-	Object* testCube;
+// ===== Objects =====
+	Camera* cam;
+
+	std::vector<Object*> testObjects;
 	Object* Bulb;
 
 // ==============================================
@@ -133,6 +142,8 @@ private:
 	// Initializes all aspects required for rendering
 	void Initialize()
 	{
+		testObjects.resize(8);
+
 		CreateWindow();
 		CreateInstance();
 		CreateSurface();
@@ -141,21 +152,33 @@ private:
 		CreateRenderpass();
 		CreateDescriptorSetLayout();
 		CreateGraphicsPipeline();
-		CreateDescriptorPool(3);
+		CreateDescriptorPool(static_cast<uint32_t>(testObjects.size()) + 1);
 		CreateCommandPools();
 		// Depth buffer
 		CreateDepthResources();
 		CreateFrameBuffers();
 		CreateSyncObjects();
 
-		testObject = new Object(device, testModelDir.c_str(), albedoTextureDir.c_str(), normalTextureDir.c_str());
-		testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
+		cam = new Camera(swapchainExtent.width / (float)swapchainExtent.height);
+
+		uint32_t index = 0;
+		float circleIncrement = (2.0f * 3.14159f) / static_cast<uint32_t>(testObjects.size());
+		for (auto& testObject : testObjects)
+		{
+			testObject = new Object(device, testModelDir.c_str(), nullptr, nullptr);
+			testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
+			testObject->transform.position.x = glm::cos(index * circleIncrement);
+			testObject->transform.position.y = glm::sin(index * circleIncrement);
+			testObject->transform.scale = glm::vec3(0.3f);
+			testObject->transform.rotation = {0.0f, 10.0f * index, 5.0f * index};
+			//testObject->transform.position.x = index;
+			//testObject->transform.scale = glm::vec3(0.5f);
+			index++;
+		}
 
 		Bulb = new Object(device, testModelDir.c_str(), albedoTextureDir.c_str(), normalTextureDir.c_str());
 		Bulb->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
-
-		//testCube = new Object(device, testCubeDir.c_str());
-		//testCube->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
+		Bulb->transform.scale *= 0.1f;
 
 		commandBuffers = CrateCommandBuffers();
 	}
@@ -180,27 +203,18 @@ private:
 		CreateGraphicsPipeline();
 		CreateDepthResources();
 		CreateFrameBuffers();
-		CreateDescriptorPool(3);
-		testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
-		//testCube->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
+		CreateDescriptorPool(static_cast<uint32_t>(testObjects.size()) + 1);
+		for (auto& testObject : testObjects)
+		{
+			testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
+		}
 		Bulb->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
+		cam->UpdateProjection(swapchainExtent.width / (float)swapchainExtent.height);
+
 		commandBuffers = CrateCommandBuffers();
 	}
 
 	#pragma region Object
-
-	// Mind the alignment
-	struct MvpInfo {
-		alignas(16) glm::mat4 model;
-		alignas(16) glm::mat4 view;
-		alignas(16) glm::mat4 proj;
-		alignas(16) glm::vec3 camPosition;
-	};
-
-	struct LightInformation {
-		alignas(16) glm::vec3 color;
-		alignas(16) glm::vec3 position;
-	};
 
 	VkDescriptorSetLayout descriptorSetLayout;
 	VkDescriptorPool descriptorPool;
@@ -310,12 +324,12 @@ private:
 		static double previousX = _x;
 		static double previousY = _y;
 
-		app->cam.yaw   += (_x - previousX) * app->mouseSensativity;
-		app->cam.pitch += (previousY - _y) * app->mouseSensativity;
-		if (app->cam.pitch > 89.0f)
-			app->cam.pitch = 89.0f;
-		if (app->cam.pitch < -89.0f)
-			app->cam.pitch = -89.0f;
+		app->cam->yaw   += (_x - previousX) * app->mouseSensativity;
+		app->cam->pitch += (previousY - _y) * app->mouseSensativity;
+		if (app->cam->pitch > 89.0f)
+			app->cam->pitch = 89.0f;
+		if (app->cam->pitch < -89.0f)
+			app->cam->pitch = -89.0f;
 
 		previousX = _x;
 		previousY = _y;
@@ -986,7 +1000,7 @@ private:
 	std::vector<VkCommandBuffer> CrateCommandBuffers()
 	{
 		std::vector<VkCommandBuffer> cmdBuffers;
-		uint32_t count = AllocateCommandBuffers(VK_COMMAND_BUFFER_LEVEL_PRIMARY, graphicsCommandPoolIndex, cmdBuffers);
+		uint32_t cmdBufferCount = AllocateCommandBuffers(VK_COMMAND_BUFFER_LEVEL_PRIMARY, graphicsCommandPoolIndex, cmdBuffers);
 
 		std::array<VkClearValue, 2> clearValues;
 		clearValues[0].color = { 0.02f, 0.025f, 0.03f, 1.0f };
@@ -1004,7 +1018,7 @@ private:
 		renderPassBeginInfo.clearValueCount = (uint32_t)clearValues.size();
 		renderPassBeginInfo.pClearValues = clearValues.data();
 
-		for (uint32_t i = 0; i < count; i++)
+		for (uint32_t i = 0; i < cmdBufferCount; i++)
 		{
 			//BeginCommandBuffer(i, renderPass, cmdBuffers[i]);
 
@@ -1017,8 +1031,10 @@ private:
 
 			vkCmdBindPipeline(cmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
-			testObject->Draw(cmdBuffers[i], pipelineLayout);
-			//testCube->Draw(cmdBuffers[i], pipelineLayout);
+			for (auto& testObject : testObjects)
+			{
+				testObject->Draw(cmdBuffers[i], pipelineLayout);
+			}
 
 			vkCmdBindPipeline(cmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, unlitPipeline);
 			Bulb->Draw(cmdBuffers[i], pipelineLayout);
@@ -1087,14 +1103,6 @@ private:
 // Main Loop
 // ==============================================
 
-	#include "Camera.h"
-	Camera cam;
-
-	struct ApplicationTimeInformation {
-		float totalTime;
-		float deltaTime;
-	} time;
-
 	// Core functionality
 	// Loops until window is closed
 	void MainLoop()
@@ -1118,23 +1126,25 @@ private:
 
 	void ProcessInput()
 	{
-		const float camSpeed = 0.5f;
+		float camSpeed = 1.0f;
+		if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+			camSpeed = 2.0f;
 		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-			cam.cameraPosition += cam.cameraFront * camSpeed * time.deltaTime;
+			cam->cameraPosition += cam->cameraFront * camSpeed * time.deltaTime;
 		if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-			cam.cameraPosition -= cam.cameraFront * camSpeed * time.deltaTime;
+			cam->cameraPosition -= cam->cameraFront * camSpeed * time.deltaTime;
 		if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-			cam.cameraPosition += cam.getRight() * camSpeed * time.deltaTime;
+			cam->cameraPosition += cam->getRight() * camSpeed * time.deltaTime;
 		if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-			cam.cameraPosition -= cam.getRight() * camSpeed * time.deltaTime;
+			cam->cameraPosition -= cam->getRight() * camSpeed * time.deltaTime;
 		if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
-			cam.cameraPosition += cam.cameraUp * camSpeed * time.deltaTime;
+			cam->cameraPosition += cam->cameraUp * camSpeed * time.deltaTime;
 		if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
-			cam.cameraPosition -= cam.cameraUp * camSpeed * time.deltaTime;
+			cam->cameraPosition -= cam->cameraUp * camSpeed * time.deltaTime;
 		if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
-		cam.UpdateCameraView();
+		cam->UpdateCameraView();
 	}
 
 	// Handles rendering and presentation to the window
@@ -1155,7 +1165,7 @@ private:
 			throw std::runtime_error("Failed to acquire swapchain image");
 		}
 
-		UpdateUniformBuffer(imageIndex);
+		UpdateObjectUniforms(imageIndex);
 
 		if (imageIsInFlight[imageIndex] != VK_NULL_HANDLE)
 			vkWaitForFences(device->logicalDevice, 1, &imageIsInFlight[imageIndex], VK_TRUE, UINT64_MAX);
@@ -1202,48 +1212,40 @@ private:
 	}
 
 	// Updates the MVP matrix for this frame
-	void UpdateUniformBuffer(uint32_t _currentFrame)
+	void UpdateObjectUniforms(uint32_t _currentFrame)
 	{
-	// UBO
-		MvpInfo mvp;
-
-		mvp.view = cam.view;
-		mvp.camPosition = cam.cameraPosition;
-
-		//ubo.model = glm::mat4(1.0f);
-		//ubo.model = glm::rotate(glm::mat4(1.0f), time.totalTime * glm::radians(10.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-		mvp.model = glm::rotate(glm::mat4(1.0f), glm::radians(glm::sin(time.totalTime) * 30.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-		mvp.proj = glm::perspective(glm::radians(45.0f), swapchainExtent.width / (float)swapchainExtent.height, 0.1f, 100.0f);
-		mvp.proj[1][1] *= -1;
-
-		device->CopyDataToBufferMemory(&mvp, sizeof(mvp), testObject->mvpBufferMemory);
-
-		//ubo.model = glm::scale(ubo.model, glm::vec3(0.75f)); // Make the cube smaller to see the sphere
-		//CopyDataToBufferMemory(&ubo, sizeof(ubo), testCube->uboBufferMemory);
+		//testObject.transform.position.x = glm::sin(time.totalTime);
+		//testObject.transform.rotation.y = glm::sin(time.totalTime) * 30.0f;
+		//testObject.transform.rotation.z = glm::cos(time.totalTime) * 30.0f;
+		for (auto& testObject : testObjects)
+		{
+			testObject->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
+		}
 
 	// LIGHT
-		LightInformation light = {};
+		skel::lights::SpotLight light = {};
+		//light.color = { glm::sin(time.totalTime * 2.0f), glm::sin(time.totalTime * 0.7f), glm::sin(time.totalTime * 1.3f)};
 		light.color = {1.0f, 1.0f, 1.0f};
+
 		//light.position = {0.0f, glm::sin(time.totalTime), (glm::cos(time.totalTime) * 0.5f + 1.5f)};
-		light.position = {0.0f, 0.0f, 3.0f};
+		//light.position = {glm::cos(time.totalTime) * 3.0f, -1.0f, glm::sin(time.totalTime) * 3.0f};
+		//light.position = {0.0f, 0.0f, 5.5f};
+		light.position = cam->cameraPosition;
+		//light.direction = {0.0f, 0.0f, -1.0f};
+		light.direction = cam->cameraFront;
+		light.ConstantLinearQuadratic = {1.0f, 0.35f, 0.44f};
+		light.cutOff = glm::cos(glm::radians(6.5f));
+		light.outerCutOff = glm::cos(glm::radians(17.5f));
 
-		device->CopyDataToBufferMemory(&light, sizeof(LightInformation), testObject->lightBufferMemory);
-		//CopyDataToBufferMemory(&light, sizeof(LightInformation), testCube->lightBufferMemory);
-		device->CopyDataToBufferMemory(&light, sizeof(LightInformation), Bulb->lightBufferMemory);
+		for (auto& testObject : testObjects)
+		{
+			device->CopyDataToBufferMemory(&light, sizeof(skel::lights::SpotLight), testObject->lightBufferMemory);
+		}
+		device->CopyDataToBufferMemory(&light, sizeof(skel::lights::SpotLight), Bulb->lightBufferMemory);
 
-		mvp.model = glm::translate(glm::mat4(1.0f), light.position);
-		mvp.model = glm::scale(mvp.model, glm::vec3(0.1f));
-		device->CopyDataToBufferMemory(&mvp, sizeof(mvp), Bulb->mvpBufferMemory);
+		Bulb->transform.position = light.position;
+		Bulb->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
 	}
-
-	// Maps buffer memory and copies input data to it
-	//void CopyDataToBufferMemory(const void* _srcData, VkDeviceSize _size, VkDeviceMemory& _memory, VkDeviceSize _offset = 0, VkMemoryMapFlags _flags = 0)
-	//{
-	//	void* tmpData;
-	//	vkMapMemory(device->logicalDevice, _memory, _offset, _size, _flags, &tmpData);
-	//	memcpy(tmpData, _srcData, _size);
-	//	vkUnmapMemory(device->logicalDevice, _memory);
-	//}
 
 // ==============================================
 // Cleanup
@@ -1279,8 +1281,11 @@ private:
 	{
 		CleanupSwapchain();
 
-		delete(testObject);
-		//delete(testCube);
+		for (auto& testObject : testObjects)
+		{
+			delete(testObject);
+		}
+
 		delete(Bulb);
 
 		vkDestroyDescriptorSetLayout(device->logicalDevice, descriptorSetLayout, nullptr);
