@@ -1222,28 +1222,49 @@ private:
 			testObject->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
 		}
 
-	// LIGHT
-		skel::lights::SpotLight light = {};
 		//light.color = { glm::sin(time.totalTime * 2.0f), glm::sin(time.totalTime * 0.7f), glm::sin(time.totalTime * 1.3f)};
-		light.color = {1.0f, 1.0f, 1.0f};
-
 		//light.position = {0.0f, glm::sin(time.totalTime), (glm::cos(time.totalTime) * 0.5f + 1.5f)};
 		//light.position = {glm::cos(time.totalTime) * 3.0f, -1.0f, glm::sin(time.totalTime) * 3.0f};
 		//light.position = {0.0f, 0.0f, 5.5f};
-		light.position = cam->cameraPosition;
 		//light.direction = {0.0f, 0.0f, -1.0f};
-		light.direction = cam->cameraFront;
-		light.ConstantLinearQuadratic = {1.0f, 0.35f, 0.44f};
-		light.cutOff = glm::cos(glm::radians(6.5f));
-		light.outerCutOff = glm::cos(glm::radians(17.5f));
+
+	// LIGHT
+		skel::lights::ShaderLights finalLights;
+		// Points
+		finalLights.pointLights[0].color = {1.0f, 1.0f, 1.0f};
+		finalLights.pointLights[0].position = {1.0f, 1.0f, 1.0f};
+		finalLights.pointLights[0].ConstantLinearQuadratic = {1.0f, 0.35f, 0.44f};
+		finalLights.pointLights[1].color = { 1.0f, 0.0f, 0.0f };
+		finalLights.pointLights[1].position = { -1.0f, 1.0f, 1.0f };
+		finalLights.pointLights[1].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.pointLights[2].color = { 0.0f, 1.0f, 0.0f };
+		finalLights.pointLights[2].position = { -1.0f, -1.0f, 1.0f };
+		finalLights.pointLights[2].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.pointLights[3].color = { 0.0f, 0.0f, 1.0f };
+		finalLights.pointLights[3].position = { 1.0f, -1.0f, 1.0f };
+		finalLights.pointLights[3].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		// Spots
+		finalLights.spotLights[0].color = { 1.0f, 0.2f, 0.1f };
+		finalLights.spotLights[0].position = cam->cameraPosition;
+		finalLights.spotLights[0].direction = cam->cameraFront;
+		finalLights.spotLights[0].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.spotLights[0].cutOff = glm::cos(glm::radians(2.0f));
+		finalLights.spotLights[0].outerCutOff = glm::cos(glm::radians(5.0f + glm::cos(time.totalTime)));
+		finalLights.spotLights[1].color = { 0.1f, 0.1f, 1.0f };
+		finalLights.spotLights[1].position = cam->cameraPosition;
+		finalLights.spotLights[1].direction = cam->cameraFront;
+		finalLights.spotLights[1].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.spotLights[1].cutOff = glm::cos(glm::radians(2.0f));
+		finalLights.spotLights[1].outerCutOff = glm::cos(glm::radians(5.0f + glm::cos(time.totalTime + 3.14159f)));
 
 		for (auto& testObject : testObjects)
 		{
-			device->CopyDataToBufferMemory(&light, sizeof(skel::lights::SpotLight), testObject->lightBufferMemory);
+			device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), testObject->lightBufferMemory);
 		}
-		device->CopyDataToBufferMemory(&light, sizeof(skel::lights::SpotLight), Bulb->lightBufferMemory);
+		device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), Bulb->lightBufferMemory);
 
-		Bulb->transform.position = light.position;
+		//Bulb->transform.position = finalLights.spotLights[0].position;
+		Bulb->transform.position = {0.0f, 0.0f, 0.0f};
 		Bulb->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
 	}
 

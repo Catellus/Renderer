@@ -1,26 +1,36 @@
 
 #version 450
 
-//layout(set = 0, binding = 1) uniform lightInfo	// Directional light
-//{
-//	vec3 position;
-//	vec3 color;
-//}light;
-//layout(set = 0, binding = 1) uniform lightInfo	// Point light
-//{
-//	vec3 position;
-//	vec3 color;
-//	vec3 conLinQua; // The light's Constant, Linear, and Quadratic values
-//}light;
-layout(set = 0, binding = 1) uniform lightInfo	// Spot light
+struct DirectionalLightInfo
+{
+	vec3 color;
+	vec3 direction;
+};
+
+struct PointLightInfo
+{
+	vec3 color;
+	vec3 position;
+	vec3 conLinQua; // The light's Constant, Linear, and Quadratic values for attenuation
+};
+
+struct SpotLightInfo
 {
 	vec3 color;
 	vec3 position;
 	vec3 direction;
-	vec3 conLinQua; // The light's Constant, Linear, and Quadratic values
+	vec3 conLinQua; // The light's Constant, Linear, and Quadratic values for attenuation
 	float cutOff;
 	float outerCutOff;
-}light;
+};
+
+// TODO : https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object
+layout(set = 0, binding = 1) uniform LightInfos
+{
+//	DirectionalLightInfo directionalLight;
+	PointLightInfo pointLights[4];
+	SpotLightInfo spotlights[2];
+}lights;
 
 layout(location = 0) in vec3 inPos;			// fragment position in world-space
 layout(location = 1) in vec3 inNormal;		// fragment normal in model space
@@ -29,41 +39,96 @@ layout(location = 3) in vec3 inCamPos;		// camera position in world-space
 
 layout(location = 0) out vec4 outColor;
 
-// TODO : http://www.lighthouse3d.com/tutorials/glsl-12-tutorial/the-normal-matrix/
-void main()
-{
-	vec3 objectColor = vec3(0.7, 0.3, 1.0);
-	vec3 finalLight = vec3(0.0);
-	vec3 final = vec3(0.0);
+//vec3 CalculateDirectionalLightContribution(DirectionalLightInfo li, vec3 N, vec3 V)
+//{
+//	vec3 L = normalize(-li.direction);
+//	vec3 R = reflect(-L, N);
+//
+//	float ambientStrength = 0.01;
+//	vec3 ambient = li.color * ambientStrength;
+//
+//	float diffuseStrength = max(dot(N, L), 0.0);
+//	vec3 diffuse = li.color * diffuseStrength;
+//
+//	float specularStrength = 0.5;
+//	float specularity = pow(max(dot(V, R), 0.0), 32);
+//	vec3 specular = li.color * specularity * specularStrength;
+//
+//	return (ambient + diffuse + specular) * li.color;
+//}
 
-	vec3 N = normalize(inNormal);
-	vec3 L = normalize(light.position - inPos);
-	vec3 V = normalize(inCamPos - inPos);
+vec3 CalculatePointLightContribution(PointLightInfo li, vec3 N, vec3 V)
+{
+	vec3 L = normalize(li.position - inPos);
 	vec3 R = reflect(-L, N);
 
-	float theta = dot(L, normalize(-light.direction));
-	if (theta > light.outerCutOff)
+	float ambientStrength = 0.01;
+	vec3 ambient = li.color * ambientStrength;
+
+	float diffuseStrength = max(dot(N, L), 0.0);
+	vec3 diffuse = li.color * diffuseStrength;
+
+	float specularStrength = 0.5;
+	float specularity = pow(max(dot(V, R), 0.0), 32);
+	vec3 specular = li.color * specularity * specularStrength;
+
+	float lightDist = length(li.position - inPos);
+	float attenuation = 1.0 / (li.conLinQua.x + li.conLinQua.y * lightDist + li.conLinQua.z * lightDist * lightDist);
+
+	return (ambient + diffuse + specular) * attenuation * li.color;
+}
+
+vec3 CalculateSpotlightContribution(SpotLightInfo li, vec3 N, vec3 V)
+{
+	vec3 L = normalize(li.position - inPos);
+	vec3 R = reflect(-L, N);
+
+	float ambientStrength = 0.01;
+	vec3 ambient = li.color * ambientStrength;
+
+	float theta = dot(L, normalize(-li.direction));
+	if (theta > li.outerCutOff)
 	{
 		float diffuseStrength = max(dot(N, L), 0.0);
-		vec3 diffuse = light.color * diffuseStrength;
+		vec3 diffuse = li.color * diffuseStrength;
 
 		float specularStrength = 0.5;
 		float specularity = pow(max(dot(V, R), 0.0), 32);
-		vec3 specular = light.color * specularity * specularStrength;
+		vec3 specular = li.color * specularity * specularStrength;
 
-		float lightDist = length(light.position - inPos);
-		float attenuation = 1.0 / (light.conLinQua.x + light.conLinQua.y * lightDist + light.conLinQua.z * lightDist * lightDist);
+		float lightDist = length(li.position - inPos);
+		float attenuation = 1.0 / (li.conLinQua.x + li.conLinQua.y * lightDist + li.conLinQua.z * lightDist * lightDist);
 
-		float epsilon   = light.cutOff - light.outerCutOff;
-		float coneFalloff = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
+		float epsilon   = li.cutOff - li.outerCutOff;
+		float coneFalloff = clamp((theta - li.outerCutOff) / epsilon, 0.0, 1.0);
 
-		finalLight = (diffuse + specular) * coneFalloff * attenuation;
+		return (ambient + ((diffuse + specular) * coneFalloff * attenuation)) * li.color;
+	}
+	return ambient;
+}
+
+void main()
+{
+	//vec3 objectColor = vec3(0.7, 0.3, 1.0);
+	vec3 objectColor= vec3(1.0);
+	vec3 finalLight = vec3(0.0);
+	vec3 final = vec3(0.0);
+
+// TODO : http://www.lighthouse3d.com/tutorials/glsl-12-tutorial/the-normal-matrix/
+	vec3 N = normalize(inNormal);
+	vec3 V = normalize(inCamPos - inPos);
+
+//	finalLight += CalculateDirectionalLightContribution(lights.directionalLight, N, V);
+
+	for (int i = 0; i < 4; i++)
+	{
+		finalLight += CalculatePointLightContribution(lights.pointLights[i], N, V);
 	}
 
-	float ambientStrength = 0.01;
-	vec3 ambient = light.color * ambientStrength;
-
-	finalLight += ambient;
+	for (int i = 0; i < 2; i++)
+	{
+		finalLight += CalculateSpotlightContribution(lights.spotlights[i], N, V);
+	}
 
 	final = objectColor * finalLight;
 	outColor = vec4(final, 1.0);

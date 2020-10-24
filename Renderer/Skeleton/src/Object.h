@@ -118,7 +118,7 @@ public:
 	void CreateUniformBuffers()
 	{
 		VkDeviceSize mvpBufferSize = sizeof(skel::MvpInfo);
-		VkDeviceSize lightBufferSize = sizeof(skel::lights::SpotLight);
+		VkDeviceSize lightBufferSize = sizeof(skel::lights::ShaderLights);
 
 		device->CreateBuffer(
 			mvpBufferSize,
@@ -150,7 +150,7 @@ public:
 
 		VkDescriptorBufferInfo uboInfo = {};
 		uboInfo.offset = 0;
-		uboInfo.range = sizeof(skel::MvpInfo);
+		uboInfo.range = VK_WHOLE_SIZE; //sizeof(skel::MvpInfo);
 		uboInfo.buffer = mvpBuffer;
 
 		VkDescriptorImageInfo albedoInfo = {};
@@ -160,7 +160,7 @@ public:
 
 		VkDescriptorBufferInfo lightInfo = {};
 		lightInfo.offset = 0;
-		lightInfo.range = sizeof(skel::lights::SpotLight);
+		lightInfo.range = VK_WHOLE_SIZE; //sizeof(skel::lights::ShaderLights);
 		lightInfo.buffer = lightBuffer;
 
 		VkDescriptorImageInfo normalInfo = {};
