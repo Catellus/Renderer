@@ -7,9 +7,11 @@
 #include "Mesh.h"
 #include "Texture.h"
 #include "Lights.h"
+#include "Shaders.h"
 
 namespace skel
 {
+	// Matrices for translating objects to clip space
 	struct MvpInfo {
 		alignas(16) glm::mat4 model;
 		alignas(16) glm::mat4 view;
@@ -17,6 +19,7 @@ namespace skel
 		alignas(16) glm::vec3 camPosition;
 	};
 
+	// Vectors transformed into the object's model matrix
 	struct Transform {
 		glm::vec3 position	= { 0.0f, 0.0f, 0.0f };
 		glm::vec3 rotation	= { 0.0f, 0.0f, 0.0f };
@@ -26,6 +29,9 @@ namespace skel
 
 class Object
 {
+// ==============================================
+// Variables
+// ==============================================
 private:
 	VulkanDevice* device;
 	Mesh mesh;
@@ -38,29 +44,33 @@ private:
 	// Albedo
 	VkImage albedoImage;
 	VkDeviceMemory albedoImageMemory;
-	VkImageView albedoImageView;
-	VkSampler albedoImageSampler;
 	// Normal
 	VkImage normalImage;
 	VkDeviceMemory normalImageMemory;
-	VkImageView normalImageView;
-	VkSampler normalImageSampler;
-
-	VkDescriptorSet descriptorSet;
 
 	skel::MvpInfo mvp;
-	VkBuffer mvpBuffer;
 	VkDeviceMemory mvpBufferMemory;
 
 public:
 	skel::Transform transform;
-	VkBuffer lightBuffer;
 	VkDeviceMemory lightBufferMemory;
+	skel::shaders::OpaqueInformation defaultShaderInfo;
 
+// ==============================================
+// Functions
+// ==============================================
 public:
-	Object(VulkanDevice* _device, const char* _modelDirectory, const char* _albedoDirectory, const char* _normalDirectory) : device(_device)
+	// Builds the object's mesh and loads its textures
+	Object(
+		VulkanDevice* _device,
+		const char* _modelDirectory,
+		skel::shaders::ShaderTypes _shaderType,
+		const char* _albedoDirectory,
+		const char* _normalDirectory
+		) : device(_device)
 	{
 		mvp.model = glm::mat4(1.0f);
+		defaultShaderInfo = {};
 
 		mesh = LoadMesh(_modelDirectory);
 		device->CreateAndFillBuffer(
@@ -80,18 +90,13 @@ public:
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
 		);
 
-		if (_albedoDirectory)
-		{
-			skel::CreateTexture(device, _albedoDirectory, albedoImage, albedoImageMemory, albedoImageView, albedoImageSampler);
-		}
-		if (_normalDirectory)
-		{
-			skel::CreateTexture(device, _normalDirectory, normalImage, normalImageMemory, normalImageView, normalImageSampler);
-		}
+		skel::CreateTexture(device, _albedoDirectory, albedoImage, albedoImageMemory, defaultShaderInfo.albedoImageView, defaultShaderInfo.albedoImageSampler);
+		skel::CreateTexture(device, _normalDirectory, normalImage, normalImageMemory, defaultShaderInfo.normalImageView, defaultShaderInfo.normalImageSampler);
 
 		CreateUniformBuffers();
 	}
 
+	// Destroy this object's buffers
 	~Object()
 	{
 		vkDestroyBuffer	(device->logicalDevice, vertexBuffer      , nullptr);
@@ -99,22 +104,23 @@ public:
 		vkDestroyBuffer	(device->logicalDevice, indexBuffer       , nullptr);
 		vkFreeMemory	(device->logicalDevice, indexBufferMemory , nullptr);
 
-		vkDestroyBuffer	(device->logicalDevice, mvpBuffer        , nullptr);
-		vkFreeMemory	(device->logicalDevice, mvpBufferMemory  , nullptr);
-		vkDestroyBuffer	(device->logicalDevice, lightBuffer      , nullptr);
-		vkFreeMemory	(device->logicalDevice, lightBufferMemory, nullptr);
+		vkDestroyBuffer	(device->logicalDevice, defaultShaderInfo.mvpBuffer  , nullptr);
+		vkFreeMemory	(device->logicalDevice, mvpBufferMemory       , nullptr);
+		vkDestroyBuffer	(device->logicalDevice, defaultShaderInfo.lightBuffer, nullptr);
+		vkFreeMemory	(device->logicalDevice, lightBufferMemory     , nullptr);
 
-		vkDestroyImage		(device->logicalDevice, albedoImage       , nullptr);
-		vkFreeMemory		(device->logicalDevice, albedoImageMemory , nullptr);
-		vkDestroyImageView	(device->logicalDevice, albedoImageView   , nullptr);
-		vkDestroySampler	(device->logicalDevice, albedoImageSampler, nullptr);
+		vkDestroyImage		(device->logicalDevice, albedoImage                  , nullptr);
+		vkFreeMemory		(device->logicalDevice, albedoImageMemory            , nullptr);
+		vkDestroyImageView	(device->logicalDevice, defaultShaderInfo.albedoImageView   , nullptr);
+		vkDestroySampler	(device->logicalDevice, defaultShaderInfo.albedoImageSampler, nullptr);
 
-		vkDestroyImage		(device->logicalDevice, normalImage       , nullptr);
-		vkFreeMemory		(device->logicalDevice, normalImageMemory , nullptr);
-		vkDestroyImageView	(device->logicalDevice, normalImageView   , nullptr);
-		vkDestroySampler	(device->logicalDevice, normalImageSampler, nullptr);
+		vkDestroyImage		(device->logicalDevice, normalImage                  , nullptr);
+		vkFreeMemory		(device->logicalDevice, normalImageMemory            , nullptr);
+		vkDestroyImageView	(device->logicalDevice, defaultShaderInfo.normalImageView   , nullptr);
+		vkDestroySampler	(device->logicalDevice, defaultShaderInfo.normalImageSampler, nullptr);
 	}
 
+	// Create the MVP and light buffers for their uniforms
 	void CreateUniformBuffers()
 	{
 		VkDeviceSize mvpBufferSize = sizeof(skel::MvpInfo);
@@ -124,7 +130,7 @@ public:
 			mvpBufferSize,
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			 mvpBuffer,
+			 defaultShaderInfo.mvpBuffer,
 			mvpBufferMemory
 		);
 
@@ -132,78 +138,23 @@ public:
 			lightBufferSize,
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			lightBuffer,
+			defaultShaderInfo.lightBuffer,
 			lightBufferMemory
 		);
 	}
 
-	void CreateDescriptorSets(VkDescriptorPool _pool, VkDescriptorSetLayout _layout)
-	{
-		VkDescriptorSetAllocateInfo allocInfo = {};
-		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		allocInfo.descriptorPool = _pool;
-		allocInfo.descriptorSetCount = 1;
-		allocInfo.pSetLayouts = &_layout;
-
-		if (vkAllocateDescriptorSets(device->logicalDevice, &allocInfo, &descriptorSet) != VK_SUCCESS)
-			throw std::runtime_error("Failed to create descriptor sets");
-
-		VkDescriptorBufferInfo mvpInfo = {};
-		mvpInfo.offset = 0;
-		mvpInfo.range = VK_WHOLE_SIZE; //sizeof(skel::MvpInfo);
-		mvpInfo.buffer = mvpBuffer;
-
-		VkDescriptorImageInfo albedoInfo = {};
-		albedoInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		albedoInfo.imageView = albedoImageView;
-		albedoInfo.sampler = albedoImageSampler;
-
-		VkDescriptorBufferInfo lightInfo = {};
-		lightInfo.offset = 0;
-		lightInfo.range = VK_WHOLE_SIZE; //sizeof(skel::lights::ShaderLights);
-		lightInfo.buffer = lightBuffer;
-
-		VkDescriptorImageInfo normalInfo = {};
-		normalInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		normalInfo.imageView = normalImageView;
-		normalInfo.sampler = normalImageSampler;
-
-
-		std::vector<VkWriteDescriptorSet> descriptorWrites = {
-			skel::initializers::WriteDescriptorSet(	// MVP matrices
-				descriptorSet,
-				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-				&mvpInfo,
-				0),
-			skel::initializers::WriteDescriptorSet(	// Light infos
-				descriptorSet,
-				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-				&lightInfo,
-				1),
-			skel::initializers::WriteDescriptorSet(	// Albedo map
-				descriptorSet,
-				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				&albedoInfo,
-				2),
-			skel::initializers::WriteDescriptorSet(	// Normal map
-				descriptorSet,
-				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				&normalInfo,
-				3),
-		};
-
-		vkUpdateDescriptorSets(device->logicalDevice, (uint32_t)descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
-	}
-
+	// Records commands to the input CommandBuffer
 	void Draw(VkCommandBuffer _commandBuffer, VkPipelineLayout pipelineLayout)
 	{
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(_commandBuffer, 0, 1, &vertexBuffer, offsets);
 		vkCmdBindIndexBuffer(_commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-		vkCmdBindDescriptorSets(_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+		vkCmdBindDescriptorSets(_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &defaultShaderInfo.descriptorSet, 0, nullptr);
 		vkCmdDrawIndexed(_commandBuffer, (uint32_t)mesh.indices.size(), 1, 0, 0, 0);
 	}
 
+	// Turns the Transform into its model matrix
+	// Updates the other matrices
 	void UpdateMVPBuffer(glm::vec3 _camPosition, glm::mat4 _projection, glm::mat4 _view)
 	{
 		mvp.model = glm::translate(glm::mat4(1.0f), transform.position);

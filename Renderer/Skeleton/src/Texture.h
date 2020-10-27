@@ -13,6 +13,7 @@
 
 namespace skel
 {
+	// Transforms the input image's layout for copying data into
 	void TransitionImageLayout(VulkanDevice* _device, VkImage _image, VkFormat _format, VkImageLayout _oldLayout, VkImageLayout _newLayout)
 	{
 		VkCommandBuffer commandBuffer = _device->BeginSingleTimeCommands(_device->graphicsCommandPoolIndex);
@@ -103,6 +104,7 @@ namespace skel
 		_imageView = CreateImageView(_device, _image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 	}
 
+	// Defines and executes a command to copy the buffer to the image
 	void CopyBufferToImage(VulkanDevice* _device, VkBuffer _buffer, VkImage _image, uint32_t _width, uint32_t _height)
 	{
 		VkCommandBuffer commandBuffer = _device->BeginSingleTimeCommands(_device->transientPoolIndex);
@@ -123,6 +125,7 @@ namespace skel
 		_device->EndSingleTimeCommands(commandBuffer, _device->transientPoolIndex, _device->transferQueue);
 	}
 
+	// Returns the index of the first memory type on the GPU with the desired filter and properties
 	uint32_t FindMemoryType(VulkanDevice* _device, uint32_t _typeFilter, VkMemoryPropertyFlags _properties)
 	{
 		VkPhysicalDeviceMemoryProperties memoryProperties;
@@ -137,6 +140,7 @@ namespace skel
 		throw std::runtime_error("Failed to find suitable memory type");
 	}
 
+	// Creates an image, and allocates and binds memory for it
 	void CreateImage(VulkanDevice* _device, uint32_t _width, uint32_t _height, VkFormat _format, VkImageTiling _tiling, VkImageUsageFlags _usage, VkMemoryPropertyFlags _properties, VkImage& _image, VkDeviceMemory& _imageMemory)
 	{
 		VkImageCreateInfo createInfo = {};
@@ -170,6 +174,7 @@ namespace skel
 		vkBindImageMemory(_device->logicalDevice, _image, _imageMemory, 0);
 	}
 
+	// Loads the input texture, and copies it to an image
 	void CreateTextureImage(VulkanDevice* _device, const std::string _directory, VkImage& _image, VkDeviceMemory& _imageMemory)
 	{
 		int textureWidth, textureHeight, textureChannels;
@@ -212,6 +217,7 @@ namespace skel
 		vkFreeMemory(_device->logicalDevice, stagingBufferMemory, nullptr);
 	}
 
+	// Creates an image, imageView, and sampler
 	void CreateTexture(VulkanDevice* _device, const std::string _dir, VkImage& _image, VkDeviceMemory& _imageMemory, VkImageView& _imageView, VkSampler& _imageSampler)
 	{
 		CreateTextureImage(_device, _dir, _image, _imageMemory);

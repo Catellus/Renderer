@@ -17,8 +17,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
-//#define STB_IMAGE_IMPLEMENTATION
-//#include <stb/stb_image.h>
 
 #include "VulkanDevice.h"
 #include "Mesh.h"
@@ -27,8 +25,9 @@
 #include "Texture.h"
 #include "Lights.h"
 #include "Camera.h"
+#include "Shaders.h"
 
-// TODO : Fix normal re-calculation (Normals spiraling @ top/bottom of sphere)
+// TODO : Add better error handling -- Don't just throw whenever something goes wrong
 
 class Application
 {
@@ -46,11 +45,12 @@ private:
 	const std::string fragShaderDir = SHADER_DIR + "default_frag.spv";
 	const std::string unlitVertShaderDir = SHADER_DIR + "unlit_vert.spv";
 	const std::string unlitFragShaderDir = SHADER_DIR + "unlit_frag.spv";
-	const std::string albedoTextureDir = TEXTURE_DIR + "UvTest.png";
+	const std::string albedoTextureDir = TEXTURE_DIR + "White.png";
 	const std::string normalTextureDir = TEXTURE_DIR + "TestNormalMap.png";
 	const std::string testModelDir = MODEL_DIR + "Cube.obj";
 	Mesh testMesh;
 
+	// The properties of the surface created by GLFW
 	struct SurfaceProperties
 	{
 		VkSurfaceCapabilitiesKHR capabilities;
@@ -68,6 +68,7 @@ private:
 		float deltaTime;
 	} time;
 
+	// Vulkan instance creation properties
 	std::vector<const char*> instanceLayers = { "VK_LAYER_KHRONOS_validation" };
 	std::vector<const char*> instanceExtensions = {};
 	std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
@@ -86,6 +87,8 @@ private:
 	GLFWwindow* window;
 	bool windowResized = false;
 
+	const double mouseSensativity = 0.1f;
+
 // ===== Vulkan Members =====
 	VkInstance instance;
 	VulkanDevice* device;
@@ -96,10 +99,7 @@ private:
 	VkPipeline pipeline;
 	VkPipeline unlitPipeline;
 
-	uint32_t graphicsCommandPoolIndex;
-	std::vector<VkCommandBuffer> commandBuffers;
-
-// ===== Swapchain & Presentation =====
+// ===== Swapchain =====
 	VkSwapchainKHR swapchain;
 	std::vector<VkImage> swapchainImages;
 	std::vector<VkImageView> swapchainImageViews;
@@ -107,6 +107,11 @@ private:
 	VkExtent2D swapchainExtent;
 	VkFormat swapchainFormat;
 
+// ===== Commands =====
+	uint32_t graphicsCommandPoolIndex;
+	std::vector<VkCommandBuffer> commandBuffers;
+
+// ===== Presentation =====
 	const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 	uint32_t currentFrame = 0;
 	std::vector<VkSemaphore> imageAvailableSemaphores;
@@ -114,17 +119,20 @@ private:
 	std::vector<VkFence> inFlightFences;
 	std::vector<VkFence> imageIsInFlight;
 
-// ===== Shaders =====
-	// Depth
+// ===== Depth Image =====
 	VkImage depthImage;
 	VkDeviceMemory depthImageMemory;
 	VkImageView depthImageView;
 
+// ===== Shaders =====
+	skel::shaders::OpaqueDescriptorInformation defaultShaderDescriptor;
+
 // ===== Objects =====
 	Camera* cam;
-
 	std::vector<Object*> testObjects;
-	Object* Bulb;
+	Object* BulbObject;
+
+	skel::lights::ShaderLights finalLights;
 
 // ==============================================
 // Initialization
@@ -144,42 +152,89 @@ private:
 	{
 		testObjects.resize(8);
 
+		// Fundamental setup
 		CreateWindow();
 		CreateInstance();
 		CreateSurface();
 		CreateVulkanDevice();
 		CreateSwapchain();
 		CreateRenderpass();
-		CreateDescriptorSetLayout();
+
+		// Setup opaque shader uniform buffers
+		defaultShaderDescriptor.CreateDescriptorSetLayout(device->logicalDevice);
+		defaultShaderDescriptor.CreateDescriptorPool(device->logicalDevice, static_cast<uint32_t>(testObjects.size()) + 1);
+
+		// Create the render pipeline
+		CreatePipelineLayout(&defaultShaderDescriptor.descriptorSetLayout);
 		CreateGraphicsPipeline();
-		CreateDescriptorPool(static_cast<uint32_t>(testObjects.size()) + 1);
-		CreateCommandPools();
-		// Depth buffer
+
+		// Create the depth buffer
 		CreateDepthResources();
 		CreateFrameBuffers();
 		CreateSyncObjects();
 
+		// Bind render commands
+		CreateCommandPools();
+
+		// Setup the objects in the world
 		cam = new Camera(swapchainExtent.width / (float)swapchainExtent.height);
 
 		uint32_t index = 0;
 		float circleIncrement = (2.0f * 3.14159f) / static_cast<uint32_t>(testObjects.size());
 		for (auto& testObject : testObjects)
 		{
-			testObject = new Object(device, testModelDir.c_str(), albedoTextureDir.c_str(), normalTextureDir.c_str());
-			testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
-			testObject->transform.position.x = glm::cos(index * circleIncrement);
-			testObject->transform.position.y = glm::sin(index * circleIncrement);
-			testObject->transform.scale = glm::vec3(0.3f);
-			testObject->transform.rotation = {0.0f, 10.0f * index, 5.0f * index};
-			//testObject->transform.position.x = index;
-			//testObject->transform.scale = glm::vec3(0.5f);
+			testObject = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Opaque, albedoTextureDir.c_str(), normalTextureDir.c_str());
+
+			defaultShaderDescriptor.CreateDescriptorSets(device->logicalDevice, testObject->defaultShaderInfo);
+			testObject->transform.position.x = glm::cos(index * circleIncrement);	// Arrange in a circle
+			testObject->transform.position.y = glm::sin(index * circleIncrement);	// Arrange in a circle
+			testObject->transform.scale = glm::vec3(0.3f);							// Arrange in a circle
+			testObject->transform.rotation = {0.0f, 10.0f * index, 5.0f * index};	// Arrange in a circle
+			//testObject->transform.position.x = index;			// Arrange in a line
+			//testObject->transform.scale = glm::vec3(0.5f);	// Arrange in a line
 			index++;
 		}
 
-		Bulb = new Object(device, testModelDir.c_str(), albedoTextureDir.c_str(), normalTextureDir.c_str());
-		Bulb->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
-		Bulb->transform.scale *= 0.1f;
+		BulbObject = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Unlit, albedoTextureDir.c_str(), normalTextureDir.c_str());
+		defaultShaderDescriptor.CreateDescriptorSets(device->logicalDevice, BulbObject->defaultShaderInfo);
+		BulbObject->transform.position = { 0.0f, 0.0f, 0.0f };
+		BulbObject->transform.scale *= 0.1f;
 
+		// Define lighting
+		// Point lights
+		finalLights.pointLights[0].color = { 1.0f, 1.0f, 1.0f };
+		finalLights.pointLights[0].position = { 1.0f, 1.0f, 1.0f };
+		finalLights.pointLights[0].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.pointLights[1].color = { 1.0f, 0.0f, 0.0f };
+		finalLights.pointLights[1].position = { -1.0f, 1.0f, 1.0f };
+		finalLights.pointLights[1].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.pointLights[2].color = { 0.0f, 1.0f, 0.0f };
+		finalLights.pointLights[2].position = { -1.0f, -1.0f, 1.0f };
+		finalLights.pointLights[2].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.pointLights[3].color = { 0.0f, 0.0f, 1.0f };
+		finalLights.pointLights[3].position = { 1.0f, -1.0f, 1.0f };
+		finalLights.pointLights[3].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		// Spotlights
+		finalLights.spotLights[0].color = { 1.0f, 0.2f, 0.1f };
+		finalLights.spotLights[0].position = cam->cameraPosition;
+		finalLights.spotLights[0].direction = cam->cameraFront;
+		finalLights.spotLights[0].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.spotLights[0].cutOff = glm::cos(glm::radians(2.0f));
+		finalLights.spotLights[0].outerCutOff = glm::cos(glm::radians(5.0f + glm::cos(time.totalTime)));
+		finalLights.spotLights[1].color = { 0.1f, 0.1f, 1.0f };
+		finalLights.spotLights[1].position = cam->cameraPosition;
+		finalLights.spotLights[1].direction = cam->cameraFront;
+		finalLights.spotLights[1].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.spotLights[1].cutOff = glm::cos(glm::radians(2.0f));
+		finalLights.spotLights[1].outerCutOff = glm::cos(glm::radians(5.0f + glm::cos(time.totalTime + 3.14159f)));
+
+		for (auto& testObject : testObjects)
+		{
+			device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), testObject->lightBufferMemory);
+		}
+		device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), BulbObject->lightBufferMemory);
+
+		// Bind render commands
 		commandBuffers = CrateCommandBuffers();
 	}
 
@@ -196,117 +251,46 @@ private:
 
 		vkDeviceWaitIdle(device->logicalDevice);
 
+		// Destroy all objects that were tied to the swapchain or its images
 		CleanupSwapchain();
 
+		// Recreate all objects tied to the swapchain or its images
 		CreateSwapchain();
 		CreateRenderpass();
+		CreatePipelineLayout(&defaultShaderDescriptor.descriptorSetLayout);
 		CreateGraphicsPipeline();
 		CreateDepthResources();
 		CreateFrameBuffers();
-		CreateDescriptorPool(static_cast<uint32_t>(testObjects.size()) + 1);
-		for (auto& testObject : testObjects)
-		{
-			testObject->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
-		}
-		Bulb->CreateDescriptorSets(descriptorPool, descriptorSetLayout);
 		cam->UpdateProjection(swapchainExtent.width / (float)swapchainExtent.height);
 
 		commandBuffers = CrateCommandBuffers();
 	}
 
-	#pragma region Object
-
-	VkDescriptorSetLayout descriptorSetLayout;
-	VkDescriptorPool descriptorPool;
-
-// ==============================================
-// Uniform Buffers
-// ==============================================
-
-	// Describe the layout of the descriptor set				(CreateDescriptorSetLayout)
-	// Attach the descriptor set layout to the pipeline layout	(CreatePipelineLayout)
-	//		Create the buffer to store data						(CreateUniformBuffers)
-	// Specify the size of the uniform							(CreateDescriptorPool)
-	// Write basic information into the descriptor sets			(CreateDescriptorSets)
-	// Bind descriptor set in a command buffer					(CreateCommandBUffers)
-
-	void CreateDescriptorSetLayout()
-	{
-		std::vector<VkDescriptorSetLayoutBinding> layoutBindings = {
-			skel::initializers::DescriptorSetLyoutBinding(	// MVP matrices
-				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-				VK_SHADER_STAGE_VERTEX_BIT,
-				0
-			),
-			skel::initializers::DescriptorSetLyoutBinding(	// Light infos
-				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-				VK_SHADER_STAGE_FRAGMENT_BIT,
-				1
-			),
-			skel::initializers::DescriptorSetLyoutBinding(	// Albedo map
-				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				VK_SHADER_STAGE_FRAGMENT_BIT,
-				2
-			),
-			skel::initializers::DescriptorSetLyoutBinding(	// Normal map
-				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				VK_SHADER_STAGE_FRAGMENT_BIT,
-				3
-			)
-		};
-
-		VkDescriptorSetLayoutCreateInfo createInfo = {};
-		createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		createInfo.bindingCount = (uint32_t)layoutBindings.size();
-		createInfo.pBindings = layoutBindings.data();
-
-		if (vkCreateDescriptorSetLayout(device->logicalDevice, &createInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
-			throw std::runtime_error("Failed to create a descriptor set layout");
-	}
-
-	// Pool sizes are determined by the shaders in the pipeline
-	void CreateDescriptorPool(uint32_t _objectCount)
-	{
-		std::vector<VkDescriptorPoolSize> poolSizes = {
-			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),			// UBO
-			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),			// Light
-			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount),	// Albeto Map
-			skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount)		// Normal Map
-		};
-
-		VkDescriptorPoolCreateInfo createInfo = {};
-		createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		createInfo.poolSizeCount = (uint32_t)poolSizes.size();
-		createInfo.pPoolSizes = poolSizes.data();
-		createInfo.maxSets = _objectCount;
-
-		if (vkCreateDescriptorPool(device->logicalDevice, &createInfo, nullptr, &descriptorPool) != VK_SUCCESS)
-			throw std::runtime_error("Failed to create descriptor pool");
-	}
-	#pragma endregion
-
-	// Creates a GLFW window pointer
+	// Initializes GLFW and creates a window
 	void CreateWindow()
 	{
 		if (!glfwInit())
 			throw std::runtime_error("Failed to init GLFW");
+
+		// Set some window properties
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
 		window = glfwCreateWindow(windowWidth, windowHeight, windowTitle, NULL, NULL);
 		if (!window)
 			throw std::runtime_error("Failed to create GLFW window");
 
+		// Retrieve all extensions GLFW needs
 		glfwRequiredExtentions = glfwGetRequiredInstanceExtensions(&glfwRequiredExtentionsCount);
 		for (uint32_t i = 0; i < glfwRequiredExtentionsCount; i++)
 		{
 			instanceExtensions.push_back(glfwRequiredExtentions[i]);
 		}
 
+		// Setup GLFW callbacks
 		glfwSetWindowUserPointer(window, this);
 		glfwSetFramebufferSizeCallback(window, WindowResizeCallback);
 		glfwSetCursorPosCallback(window, mouseMovementCallback);
-		// Lock the cursor to the window & makes it invisible
-		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);	// Lock the cursor to the window & makes it invisible
 	}
 
 	// Called when the GLFW window is resized
@@ -316,7 +300,8 @@ private:
 		app->windowResized = true;
 	}
 
-	const double mouseSensativity = 0.1f;
+	// Called when the mouse is moved within the GLFW window's borders
+	// Adjusts the camera's pitch & yaw
 	static void mouseMovementCallback(GLFWwindow* _window, double _x, double _y)
 	{
 		auto app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(_window));
@@ -335,7 +320,7 @@ private:
 		previousY = _y;
 	}
 
-
+	// Make GLFW create a surface to present images to
 	void CreateSurface()
 	{
 		glfwCreateWindowSurface(instance, window, nullptr, &surface);
@@ -364,20 +349,23 @@ private:
 			throw std::runtime_error("Failed to create vkInstance");
 	}
 
-	// Selects a physical device and initializes logical device
+	// Selects a physical device and initializes a logical device
 	void CreateVulkanDevice()
 	{
+		// Discover GPUs in the system
 		uint32_t deviceCount;
 		vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 		if (deviceCount == 0)
 			throw std::runtime_error("Failed to enumerate physical devices");
-
 		std::vector<VkPhysicalDevice> devices(deviceCount);
 		vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
+		// Select the best candidate
+		// Get an index for each of the required queue families
 		uint32_t graphicsIndex, transferIndex, presentIndex;
 		uint32_t selectedDevice = ChooseSuitableDevice(devices, graphicsIndex, transferIndex, presentIndex);
 
+		// Create a VulkanDevice & logical device
 		device = new VulkanDevice(instance, devices[selectedDevice]);
 		device->queueFamilyIndices.graphics = graphicsIndex;
 		device->queueFamilyIndices.transfer = transferIndex;
@@ -404,6 +392,7 @@ private:
 
 		for (const auto& d : _devices)
 		{
+			// Check for the presense of all required extensions
 			std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
 			vkEnumerateDeviceExtensionProperties(d, nullptr, &supportedExtensionsCount, nullptr);
 			supportedExtensions.resize(supportedExtensionsCount);
@@ -416,6 +405,7 @@ private:
 				requiredExtensions.erase(e.extensionName);
 			}
 
+			// Find required queue familiy indices
 			vkGetPhysicalDeviceQueueFamilyProperties(d, &qPropCount, nullptr);
 			qProps.resize(qPropCount);
 			vkGetPhysicalDeviceQueueFamilyProperties(d, &qPropCount, qProps.data());
@@ -424,6 +414,7 @@ private:
 			transfer = GetQueueFamilyIndex(qProps, VK_QUEUE_TRANSFER_BIT);
 			present = GetPresentFamilyIndex(qProps, d);
 
+			// If all required elements are present, use this device
 			if (requiredExtensions.empty() && graphics >= 0 && transfer >= 0 && present >= 0 && GetSurfaceProperties(d).isSuitable() && supportedFeatures.samplerAnisotropy)
 			{
 				_graphicsIndex = graphics;
@@ -447,7 +438,7 @@ private:
 		{
 			if (_flag & _families[i].queueFlags)
 			{
-				if (_flag == VK_QUEUE_TRANSFER_BIT)
+				if (_flag == VK_QUEUE_TRANSFER_BIT) // Append additional queue families here (ex: compute)
 				{
 					if ((_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0)
 						return i;
@@ -465,14 +456,15 @@ private:
 	}
 
 	// Returns the index of the first queue that supports the surface
+	// Queries for WSI support
 	int GetPresentFamilyIndex(std::vector<VkQueueFamilyProperties> qProps, VkPhysicalDevice d)
 	{
 		uint32_t tmpQueueProp = 0;
 		for (const auto& queueProp : qProps)
 		{
-			VkBool32 support = VK_FALSE;
-			vkGetPhysicalDeviceSurfaceSupportKHR(d, tmpQueueProp, surface, &support);
-			if (support == VK_TRUE)
+			VkBool32 supported = VK_FALSE;
+			vkGetPhysicalDeviceSurfaceSupportKHR(d, tmpQueueProp, surface, &supported);
+			if (supported == VK_TRUE)
 			{
 				return tmpQueueProp;
 			}
@@ -482,7 +474,7 @@ private:
 		return -1;
 	}
 
-	// Returns the device's surface capabilities
+	// Returns the device's supported image and presentation information
 	SurfaceProperties GetSurfaceProperties(VkPhysicalDevice _device)
 	{
 		SurfaceProperties properties;
@@ -502,7 +494,7 @@ private:
 		return properties;
 	}
 
-	// Create basic command pools for rendering
+	// Create the basic command pool for rendering
 	void CreateCommandPools()
 	{
 		graphicsCommandPoolIndex = device->CreateCommandPool(device->queueFamilyIndices.graphics, 0);
@@ -524,6 +516,7 @@ private:
 			imageCount = properties.capabilities.maxImageCount;
 		}
 
+		// Define the properties of the swapchain and its images
 		VkSwapchainCreateInfoKHR createInfo = {};
 		createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 		createInfo.imageFormat = format.format;
@@ -558,6 +551,8 @@ private:
 			throw std::runtime_error("Failed to create swapchain");
 		}
 
+		// Retrieve the swapchain's images
+		// Create an imageView for each
 		vkGetSwapchainImagesKHR(device->logicalDevice, swapchain, &imageCount, nullptr);
 		swapchainImages.resize(imageCount);
 		swapchainImageViews.resize(imageCount);
@@ -572,9 +567,10 @@ private:
 		}
 	}
 
-	// Finds the best fit for the surface's format, present mode, and extent
+	// Finds a surface with ideal format, present mode, and extent properties
 	void GetIdealSurfaceProperties(SurfaceProperties _properties, VkSurfaceFormatKHR& _format, VkPresentModeKHR& _presentMode, VkExtent2D& _extent)
 	{
+		// Search for SRGB and 32 bit color capabilities
 		_format = _properties.formats[0];
 		for (const auto& f : _properties.formats)
 		{
@@ -585,6 +581,7 @@ private:
 			}
 		}
 
+		// FIFO is guaranteed
 		_presentMode = VK_PRESENT_MODE_FIFO_KHR;
 		for (const auto& m : _properties.presentModes)
 		{
@@ -595,6 +592,7 @@ private:
 			}
 		}
 
+		// Define the extent if one is not present
 		if (_properties.capabilities.currentExtent.width != UINT32_MAX)
 		{
 			_extent = _properties.capabilities.currentExtent;
@@ -604,24 +602,12 @@ private:
 			int tmpWidth, tmpHeight;
 			glfwGetFramebufferSize(window, &tmpWidth, &tmpHeight);
 			VkExtent2D actual = { (uint32_t)tmpWidth, (uint32_t)tmpHeight };
-			actual.width = clamp(actual.width, _properties.capabilities.minImageExtent.width, _properties.capabilities.maxImageExtent.width);
-			actual.height = clamp(actual.height, _properties.capabilities.minImageExtent.height, _properties.capabilities.maxImageExtent.height);
+			actual.width = glm::clamp(actual.width, _properties.capabilities.minImageExtent.width, _properties.capabilities.maxImageExtent.width);
+			actual.height = glm::clamp(actual.height, _properties.capabilities.minImageExtent.height, _properties.capabilities.maxImageExtent.height);
 			_extent = actual;
 		}
 	}
 
-// TODO : Move this to a math library
-	// Keep an input number between a min & max
-	uint32_t clamp(uint32_t _val, uint32_t _min, uint32_t _max)
-	{
-		if (_val < _min)
-			return _min;
-		if (_val > _max)
-			return _max;
-		return _val;
-	}
-
-	// Create framebuffers
 	// Specifies the image view(s) to bind to renderpass attachments
 	void CreateFrameBuffers()
 	{
@@ -645,9 +631,10 @@ private:
 		}
 	}
 
-	// Specify what types of attachments will be accessed
+	// Specify what types of attachments will be accessed by the graphics pipeline
 	void CreateRenderpass()
 	{
+		// Describes the swapchain images' color
 		VkAttachmentDescription colorAttachment = {};
 		colorAttachment.format = swapchainFormat;
 		colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -658,6 +645,11 @@ private:
 		colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
+		VkAttachmentReference colorAttachmentReference = {};
+		colorAttachmentReference.attachment = 0;
+		colorAttachmentReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+		// Describes the depth texture
 		VkAttachmentDescription depthAttachment = {};
 		depthAttachment.format = FindDepthFormat();
 		depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -668,20 +660,18 @@ private:
 		depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-		VkAttachmentReference colorAttachmentReference = {};
-		colorAttachmentReference.attachment = 0;
-		colorAttachmentReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
 		VkAttachmentReference depthAttachementReference = {};
 		depthAttachementReference.attachment = 1;
 		depthAttachementReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
+		// Single required subpass for these attachments
 		VkSubpassDescription subpass = {};
 		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		subpass.colorAttachmentCount = 1;
 		subpass.pColorAttachments = &colorAttachmentReference;
 		subpass.pDepthStencilAttachment = &depthAttachementReference;
 
+		// No memory dependencies between subpasses
 		VkSubpassDependency dependency = {};
 		dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
 		dependency.dstSubpass = 0;
@@ -704,7 +694,7 @@ private:
 			throw std::runtime_error("Failed to create renderpass");
 	}
 
-	// Define variables for each stage of the pipeline
+	// Define the properties for each stage of the graphics pipeline
 	void CreateGraphicsPipeline()
 	{
 	// ===== Viewport =====
@@ -729,6 +719,7 @@ private:
 			);
 
 	// ===== Vertex Input =====
+	// Vertex information (Position, Color, UV, etc)
 		VkVertexInputBindingDescription vertInputBinding = Vertex::GetBindingDescription();
 		auto vertInputAttribute = Vertex::GetAttributeDescription();
 
@@ -780,6 +771,7 @@ private:
 			);
 
 	// ===== Dynamic =====
+	// States of the pipeline that change frequently (ex: the viewport resizing)
 		VkPipelineDynamicStateCreateInfo dynamicState =
 			skel::initializers::PipelineDynamicStateCreateInfo(
 				0,
@@ -787,10 +779,11 @@ private:
 			);
 
 	// ===== Pipeline Layout =====
-		CreatePipelineLayout();
+	// Defines the shader's expected uniform bindings
+	// Moved to Initialization
 
 	// ===== Shader Stage =====
-		// Normal =====
+	// Opaque =====
 		std::vector<char> vertFile = LoadFile(vertShaderDir.c_str());
 		std::vector<char> fragFile = LoadFile(fragShaderDir.c_str());
 		VkShaderModule vertShaderModule = CreateShaderModule(vertFile);
@@ -812,7 +805,7 @@ private:
 			fragShaderStageInfo
 		};
 
-		// Unlit =====
+	// Unlit =====
 		std::vector<char> unlitVertFile = LoadFile(unlitVertShaderDir.c_str());
 		std::vector<char> unlitFragFile = LoadFile(unlitFragShaderDir.c_str());
 		VkShaderModule unlitVertShaderModule = CreateShaderModule(unlitVertFile);
@@ -851,17 +844,17 @@ private:
 		pipelineCreateInfo.pDynamicState		= &dynamicState;
 
 
-		// Normal =====
+		// Create the opaque-shadered pipeline =====
 		pipelineCreateInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
 		pipelineCreateInfo.pStages = shaderStages.data();
 
 		if (vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline) != VK_SUCCESS)
-			throw std::runtime_error("Failed to create graphics pipeline");
+			throw std::runtime_error("Failed to create opaque pipeline");
 
 		vkDestroyShaderModule(device->logicalDevice, vertShaderModule, nullptr);
 		vkDestroyShaderModule(device->logicalDevice, fragShaderModule, nullptr);
 
-		// Unlit =====
+		// Create the unlit-shadered pipeline =====
 		pipelineCreateInfo.stageCount = static_cast<uint32_t>(unlitShaderStages.size());
 		pipelineCreateInfo.pStages = unlitShaderStages.data();
 
@@ -873,11 +866,11 @@ private:
 	}
 
 	// Binds shader uniforms
-	void CreatePipelineLayout()
+	void CreatePipelineLayout(VkDescriptorSetLayout* _layouts)
 	{
 		VkPipelineLayoutCreateInfo createInfo =
 			skel::initializers::PipelineLayoutCreateInfo(
-				&descriptorSetLayout
+				_layouts
 			);
 
 		if (vkCreatePipelineLayout(device->logicalDevice, &createInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
@@ -899,7 +892,7 @@ private:
 		return tmpShaderModule;
 	}
 
-	// Loads a file as a binary file
+	// Loads a file as binary
 	// Returns a character vector
 	std::vector<char> LoadFile(const char* _directory)
 	{
@@ -943,9 +936,10 @@ private:
 	}
 
 // ==============================================
-// Create Depth test
+// Depth/Stencil image
 // ==============================================
 
+	// Creates an image and view for the depth texture
 	void CreateDepthResources()
 	{
 		VkFormat depthFormat = FindDepthFormat();
@@ -964,6 +958,7 @@ private:
 		depthImageView = skel::CreateImageView(device, depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 	}
 
+	// Returns the depth texture's image format
 	VkFormat FindDepthFormat()
 	{
 		return FindSupportedFormat(
@@ -973,6 +968,7 @@ private:
 		);
 	}
 
+	// Returns the first format of the desired properties supported by the GPU
 	VkFormat FindSupportedFormat(const std::vector<VkFormat>& _candidates, VkImageTiling _tiling, VkFormatFeatureFlags _features)
 	{
 		for (VkFormat format : _candidates)
@@ -988,15 +984,11 @@ private:
 		throw std::runtime_error("Failed to find a suitable format");
 	}
 
-	bool HasStencilComponent(VkFormat _format)
-	{
-		return _format == VK_FORMAT_D32_SFLOAT_S8_UINT || _format == VK_FORMAT_D24_UNORM_S8_UINT;
-	}
-
 // ==============================================
-// Load models
+// Command Buffers
 // ==============================================
 
+	// Allocates space for, creates, and returns a set of rendering command buffers
 	std::vector<VkCommandBuffer> CrateCommandBuffers()
 	{
 		std::vector<VkCommandBuffer> cmdBuffers;
@@ -1020,36 +1012,32 @@ private:
 
 		for (uint32_t i = 0; i < cmdBufferCount; i++)
 		{
-			//BeginCommandBuffer(i, renderPass, cmdBuffers[i]);
-
+			// Begin recording a command
 			if (vkBeginCommandBuffer(cmdBuffers[i], &beginInfo) != VK_SUCCESS)
 				throw std::runtime_error("Failed to begin command buffer");
 
 			renderPassBeginInfo.framebuffer = swapchainFrameBuffers[i];
-
 			vkCmdBeginRenderPass(cmdBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
+			// Opaque pipeline
 			vkCmdBindPipeline(cmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-
 			for (auto& testObject : testObjects)
 			{
 				testObject->Draw(cmdBuffers[i], pipelineLayout);
 			}
 
+			// Unlit pipeline
 			vkCmdBindPipeline(cmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, unlitPipeline);
-			Bulb->Draw(cmdBuffers[i], pipelineLayout);
+			BulbObject->Draw(cmdBuffers[i], pipelineLayout);
 
+			// Complete the recording
 			EndCommandBuffer(cmdBuffers[i]);
 		}
 
 		return cmdBuffers;
 	}
 
-// ==============================================
-// Command Buffers
-// ==============================================
-
-	// Create objects with instructions on rendering
+	// Allocate memory for command recording
 	uint32_t AllocateCommandBuffers(VkCommandBufferLevel _level, uint32_t _commandPoolIndex, std::vector<VkCommandBuffer>& _buffers)
 	{
 		uint32_t size = (uint32_t)swapchainFrameBuffers.size();
@@ -1065,30 +1053,6 @@ private:
 			throw std::runtime_error("Failed to create command buffers");
 
 		return size;
-	}
-
-	void BeginCommandBuffer(uint32_t _index, VkRenderPass _renderPass, VkCommandBuffer& _buffer)
-	{
-		VkCommandBufferBeginInfo beginInfo = {};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.pInheritanceInfo = nullptr;
-
-		if (vkBeginCommandBuffer(_buffer, &beginInfo) != VK_SUCCESS)
-			throw std::runtime_error("Failed to begin command buffer");
-
-		VkRenderPassBeginInfo renderPassBeginInfo = {};
-		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		renderPassBeginInfo.renderPass = _renderPass;
-		renderPassBeginInfo.framebuffer = swapchainFrameBuffers[_index];
-		renderPassBeginInfo.renderArea.offset = { 0, 0 };
-		renderPassBeginInfo.renderArea.extent = swapchainExtent;
-		std::array<VkClearValue, 2> clearValues;
-		clearValues[0].color = { 0.02f, 0.025f, 0.03f, 1.0f };
-		clearValues[1].depthStencil = { 1.0f, 0 };
-		renderPassBeginInfo.clearValueCount = (uint32_t)clearValues.size();
-		renderPassBeginInfo.pClearValues = clearValues.data();
-
-		vkCmdBeginRenderPass(_buffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 	}
 
 	void EndCommandBuffer(VkCommandBuffer& _buffer)
@@ -1113,9 +1077,14 @@ private:
 		while (!glfwWindowShouldClose(window))
 		{
 			ProcessInput();
+
+			// Update the uniform buffers of all objects
+			UpdateObjectUniforms();
+
 			RenderFrame();
 			glfwPollEvents();
 
+			// Update the time taken for this frame, and the application's total runtime
 			auto current = std::chrono::high_resolution_clock::now();
 			time.deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(current - old).count();
 			time.totalTime = std::chrono::duration<float, std::chrono::seconds::period>(current - start).count();
@@ -1124,6 +1093,8 @@ private:
 		vkDeviceWaitIdle(device->logicalDevice);
 	}
 
+	// Interrupt called by GLFW upon input
+	// Handles camera movement and sets application shutdown in motion
 	void ProcessInput()
 	{
 		float camSpeed = 1.0f;
@@ -1138,11 +1109,11 @@ private:
 		if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
 			cam->cameraPosition -= cam->getRight() * camSpeed * time.deltaTime;
 		if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
-			cam->cameraPosition += cam->cameraUp * camSpeed * time.deltaTime;
+			cam->cameraPosition += cam->worldUp * camSpeed * time.deltaTime;
 		if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
-			cam->cameraPosition -= cam->cameraUp * camSpeed * time.deltaTime;
+			cam->cameraPosition -= cam->worldUp * camSpeed * time.deltaTime;
 		if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			glfwSetWindowShouldClose(window, GLFW_TRUE);
 
 		cam->UpdateCameraView();
 	}
@@ -1150,9 +1121,10 @@ private:
 	// Handles rendering and presentation to the window
 	void RenderFrame()
 	{
-		vkWaitForFences(device->logicalDevice, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
-
 		uint32_t imageIndex;
+
+		// Wait for and retrieve the next frame for rendering
+		vkWaitForFences(device->logicalDevice, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 		VkResult result = vkAcquireNextImageKHR(device->logicalDevice, swapchain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
 		if (result == VK_ERROR_OUT_OF_DATE_KHR)
@@ -1165,12 +1137,11 @@ private:
 			throw std::runtime_error("Failed to acquire swapchain image");
 		}
 
-		UpdateObjectUniforms(imageIndex);
-
 		if (imageIsInFlight[imageIndex] != VK_NULL_HANDLE)
 			vkWaitForFences(device->logicalDevice, 1, &imageIsInFlight[imageIndex], VK_TRUE, UINT64_MAX);
 		imageIsInFlight[imageIndex] = inFlightFences[currentFrame];
 
+		// Define render command submittal synchronization elements
 		VkSubmitInfo submitInfo = {};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
@@ -1185,9 +1156,12 @@ private:
 		submitInfo.pSignalSemaphores = signalSemaphores;
 
 		vkResetFences(device->logicalDevice, 1, &inFlightFences[currentFrame]);
+
+		// Render this frame
 		if (vkQueueSubmit(device->graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
 			throw std::runtime_error("Failed to submit draw command buffer");
 
+		// Define presentation command submittal synchronization elements
 		VkPresentInfoKHR presentInfo = {};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 		presentInfo.waitSemaphoreCount = 1;
@@ -1196,6 +1170,7 @@ private:
 		presentInfo.pSwapchains = &swapchain;
 		presentInfo.pImageIndices = &imageIndex;
 
+		// Present this frame
 		result = vkQueuePresentKHR(device->presentQueue, &presentInfo);
 
 		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || windowResized)
@@ -1211,61 +1186,19 @@ private:
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
+// TODO : define this (as a general "Update") in the Object class
 	// Updates the MVP matrix for this frame
-	void UpdateObjectUniforms(uint32_t _currentFrame)
+	void UpdateObjectUniforms()
 	{
-		//testObject.transform.position.x = glm::sin(time.totalTime);
-		//testObject.transform.rotation.y = glm::sin(time.totalTime) * 30.0f;
-		//testObject.transform.rotation.z = glm::cos(time.totalTime) * 30.0f;
 		for (auto& testObject : testObjects)
 		{
+			//testObject->transform.position.x = glm::sin(time.totalTime);
+			//testObject->transform.rotation.y = glm::sin(time.totalTime) * 30.0f;
+			//testObject->transform.rotation.z = glm::cos(time.totalTime) * 30.0f;
 			testObject->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
 		}
 
-		//light.color = { glm::sin(time.totalTime * 2.0f), glm::sin(time.totalTime * 0.7f), glm::sin(time.totalTime * 1.3f)};
-		//light.position = {0.0f, glm::sin(time.totalTime), (glm::cos(time.totalTime) * 0.5f + 1.5f)};
-		//light.position = {glm::cos(time.totalTime) * 3.0f, -1.0f, glm::sin(time.totalTime) * 3.0f};
-		//light.position = {0.0f, 0.0f, 5.5f};
-		//light.direction = {0.0f, 0.0f, -1.0f};
-
-	// LIGHT
-		skel::lights::ShaderLights finalLights;
-		// Points
-		finalLights.pointLights[0].color = {1.0f, 1.0f, 1.0f};
-		finalLights.pointLights[0].position = {1.0f, 1.0f, 1.0f};
-		finalLights.pointLights[0].ConstantLinearQuadratic = {1.0f, 0.35f, 0.44f};
-		finalLights.pointLights[1].color = { 1.0f, 0.0f, 0.0f };
-		finalLights.pointLights[1].position = { -1.0f, 1.0f, 1.0f };
-		finalLights.pointLights[1].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
-		finalLights.pointLights[2].color = { 0.0f, 1.0f, 0.0f };
-		finalLights.pointLights[2].position = { -1.0f, -1.0f, 1.0f };
-		finalLights.pointLights[2].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
-		finalLights.pointLights[3].color = { 0.0f, 0.0f, 1.0f };
-		finalLights.pointLights[3].position = { 1.0f, -1.0f, 1.0f };
-		finalLights.pointLights[3].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
-		// Spots
-		finalLights.spotLights[0].color = { 1.0f, 0.2f, 0.1f };
-		finalLights.spotLights[0].position = cam->cameraPosition;
-		finalLights.spotLights[0].direction = cam->cameraFront;
-		finalLights.spotLights[0].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
-		finalLights.spotLights[0].cutOff = glm::cos(glm::radians(2.0f));
-		finalLights.spotLights[0].outerCutOff = glm::cos(glm::radians(5.0f + glm::cos(time.totalTime)));
-		finalLights.spotLights[1].color = { 0.1f, 0.1f, 1.0f };
-		finalLights.spotLights[1].position = cam->cameraPosition;
-		finalLights.spotLights[1].direction = cam->cameraFront;
-		finalLights.spotLights[1].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
-		finalLights.spotLights[1].cutOff = glm::cos(glm::radians(2.0f));
-		finalLights.spotLights[1].outerCutOff = glm::cos(glm::radians(5.0f + glm::cos(time.totalTime + 3.14159f)));
-
-		for (auto& testObject : testObjects)
-		{
-			device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), testObject->lightBufferMemory);
-		}
-		device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), Bulb->lightBufferMemory);
-
-		//Bulb->transform.position = finalLights.spotLights[0].position;
-		Bulb->transform.position = {0.0f, 0.0f, 0.0f};
-		Bulb->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
+		BulbObject->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
 	}
 
 // ==============================================
@@ -1278,8 +1211,6 @@ private:
 		vkDestroyImageView(device->logicalDevice, depthImageView, nullptr);
 		vkDestroyImage(device->logicalDevice, depthImage, nullptr);
 		vkFreeMemory(device->logicalDevice, depthImageMemory, nullptr);
-
-		vkDestroyDescriptorPool(device->logicalDevice, descriptorPool, nullptr);
 
 		for (const auto& f : swapchainFrameBuffers)
 			vkDestroyFramebuffer(device->logicalDevice, f, nullptr);
@@ -1307,9 +1238,9 @@ private:
 			delete(testObject);
 		}
 
-		delete(Bulb);
+		delete(BulbObject);
 
-		vkDestroyDescriptorSetLayout(device->logicalDevice, descriptorSetLayout, nullptr);
+		defaultShaderDescriptor.Cleanup(device->logicalDevice);
 
 		for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{

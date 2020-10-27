@@ -97,6 +97,7 @@
     <ClInclude Include="src\Lights.h" />
     <ClInclude Include="src\Mesh.h" />
     <ClInclude Include="src\Object.h" />
+    <ClInclude Include="src\Shaders.h" />
     <ClInclude Include="src\Texture.h" />
     <ClInclude Include="src\VulkanDevice.h" />
   </ItemGroup>

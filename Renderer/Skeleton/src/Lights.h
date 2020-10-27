@@ -30,6 +30,8 @@ namespace skel
 			alignas(4) float outerCutOff;
 		};
 
+// TODO : https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object
+		// Used as a shader uniform
 		struct ShaderLights
 		{
 			//DirectionalLight directionalLight;

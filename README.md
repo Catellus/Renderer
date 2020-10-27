@@ -1,6 +1,7 @@
 # Renderer
 A 3D renderer using the Vulkan API.
 An educational playground to figure out Vulkan, 3D graphics, and various rendering techniques
+![](AlbedoLightsAndNormals.PNG)
 ---
 ## Implemented
 - Boilerplate Vulkan

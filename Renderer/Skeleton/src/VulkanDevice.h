@@ -37,6 +37,7 @@ struct VulkanDevice
 // Initialization
 // ==============================================
 
+	// Gathers information about the GPU
 	VulkanDevice(VkInstance _instance, VkPhysicalDevice _device)
 	{
 		physicalDevice = _device;
@@ -56,6 +57,7 @@ struct VulkanDevice
 		vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionPropertyCount, extensionProperties.data());
 	}
 
+	// Defines and creates a logical device with queues
 	void CreateLogicalDevice()
 	{
 		VkDeviceCreateInfo createInfo = {};
@@ -66,6 +68,7 @@ struct VulkanDevice
 		enabledFeatures.samplerAnisotropy = VK_TRUE;
 		createInfo.pEnabledFeatures = &enabledFeatures;
 
+		// Define the queues to create
 		uint32_t i = 0;
 		const float priority = 1.0f;
 		const uint32_t queueIndices[] = { queueFamilyIndices.graphics, queueFamilyIndices.transfer, queueFamilyIndices.present };
@@ -111,6 +114,7 @@ struct VulkanDevice
 // Runtime
 // ==============================================
 
+	// Returns the index of the first queue family that meets the input requirements
 	int FindQueueFamilyIndex(VkQueueFlagBits _flag)
 	{
 		int bestFit = -1;
@@ -135,6 +139,7 @@ struct VulkanDevice
 		return bestFit;
 	}
 
+	// Returns a command pool in the given queue family
 	uint32_t CreateCommandPool(uint32_t _queue, VkCommandPoolCreateFlags _flags)
 	{
 		VkCommandPoolCreateInfo createInfo = {};
@@ -150,6 +155,7 @@ struct VulkanDevice
 		return (uint32_t)commandPools.size() - 1;
 	}
 
+	// Creates a buffer of the given properties, and allocates and binds its memory
 	void CreateBuffer(VkDeviceSize _bufferSize, VkBufferUsageFlags _bufferUsage, VkMemoryPropertyFlags _memoryProperties, VkBuffer& _buffer, VkDeviceMemory& _memory)
 	{
 		VkBufferCreateInfo bufferInfo = {};
@@ -212,6 +218,7 @@ struct VulkanDevice
 		vkUnmapMemory(logicalDevice, _memory);
 	}
 
+	// Create and begin recording a single use command
 	VkCommandBuffer BeginSingleTimeCommands(uint32_t _poolIndex)
 	{
 		VkCommandBufferAllocateInfo allocInfo = {};
@@ -227,14 +234,18 @@ struct VulkanDevice
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
+		// Begin recording commands
 		vkBeginCommandBuffer(commandBuffer, &beginInfo);
 		return commandBuffer;
 	}
 
+	// Finish recording and execute a single use command
 	void EndSingleTimeCommands(VkCommandBuffer& _commandBuffer, uint32_t _poolIndex, VkQueue _queue)
 	{
+		// Finish recording commands
 		vkEndCommandBuffer(_commandBuffer);
 
+		// Execute recorded command
 		VkSubmitInfo submitInfo = {};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		submitInfo.commandBufferCount = 1;
@@ -243,6 +254,7 @@ struct VulkanDevice
 // TODO : Use transfer queue & a fence (not queueWaitIdle)
 		vkQueueSubmit(_queue, 1, &submitInfo, VK_NULL_HANDLE);
 		vkQueueWaitIdle(_queue);
+		// Destroy command
 		vkFreeCommandBuffers(logicalDevice, commandPools[_poolIndex], 1, &_commandBuffer);
 	}
 

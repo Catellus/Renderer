@@ -22,6 +22,7 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tinyobjloader/tiny_obj_loader.h>
 
+// Holds vertex information and its handles descriptions
 struct Vertex {
 	glm::vec3 position;
 	glm::vec3 normal;
@@ -61,24 +62,26 @@ struct Vertex {
 	}
 };
 
-// http://www.azillionmonkeys.com/qed/hash.html
+// TODO : Make a better hash function http://www.azillionmonkeys.com/qed/hash.html
+// Used to map vertices into an unordered array during mesh building
 namespace std {
 	template<> struct hash<Vertex> {
 		size_t operator()(Vertex const& vertex) const {
 			return ((hash<glm::vec3>()(vertex.position) ^
 				(hash<glm::vec2>()(vertex.texCoord) << 1)) >> 1) ^
 				(hash<glm::vec3>()(vertex.normal) << 1);
-				//(hash<glm::vec3>()(vertex.bitangent) << 1);
 		}
 	};
 }
 
+// Stores basic information to render a model
 struct Mesh
 {
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
 };
 
+// A crude candy corn
 //const std::vector<Vertex> verts = {
 //	{{ 0.0f  , -0.65f, 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //0
 //	{{ 0.1f  , -0.6f , 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //1
@@ -106,8 +109,11 @@ struct Mesh
 //	11, 13, 12,
 //};
 
+// Loads the object from disk
+// Returns a mesh built from the input file
 Mesh LoadMesh(const char* _directory)
 {
+	// Load the mesh with Tinyobj
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
 	std::vector<tinyobj::material_t> materials;
@@ -115,7 +121,8 @@ Mesh LoadMesh(const char* _directory)
 	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, _directory))
 		throw std::runtime_error(warn + err);
 
-	Mesh tmpMesh = {};
+	// Convert the Tinyobj mesh into a Skeleton mesh
+	Mesh endMesh = {};
 	std::unordered_map<Vertex, uint32_t> uniqueVerts = {};
 
 	for (const auto& shape : shapes)
@@ -124,6 +131,7 @@ Mesh LoadMesh(const char* _directory)
 		{
 			Vertex vert = {};
 
+			// Tinyobj does not use vec3's -- This makes a vec3 from 3 floats
 			vert.position = {
 				attrib.vertices[3 * index.vertex_index + 0],
 				attrib.vertices[3 * index.vertex_index + 1],
@@ -132,6 +140,7 @@ Mesh LoadMesh(const char* _directory)
 
 			vert.texCoord = {
 				attrib.texcoords[2 * index.texcoord_index + 0],
+				// Y axis is 0->1 top->bottom (inverse of OpenGL)
 				1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
 			};
 
@@ -143,13 +152,13 @@ Mesh LoadMesh(const char* _directory)
 
 			if (uniqueVerts.count(vert) == 0)
 			{
-				uniqueVerts[vert] = (uint32_t)tmpMesh.vertices.size();
-				tmpMesh.vertices.push_back(vert);
+				uniqueVerts[vert] = (uint32_t)endMesh.vertices.size();
+				endMesh.vertices.push_back(vert);
 			}
-			tmpMesh.indices.push_back(uniqueVerts[vert]);
+			endMesh.indices.push_back(uniqueVerts[vert]);
 		}
 	}
 
-	return tmpMesh;
+	return endMesh;
 }
 
