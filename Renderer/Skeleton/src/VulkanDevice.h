@@ -4,7 +4,6 @@
 #include <vector>
 
 #include <vulkan/vulkan.h>
-#include "Mesh.h"
 
 struct VulkanDevice
 {

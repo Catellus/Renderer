@@ -9,6 +9,8 @@
 #include "Lights.h"
 #include "Shaders.h"
 
+#include <iostream>
+
 namespace skel
 {
 	// Matrices for translating objects to clip space
@@ -27,6 +29,8 @@ namespace skel
 	};
 }
 
+// TODO : Only create each image once
+// TODO : Share BaseShader between objects using the same shader
 class Object
 {
 // ==============================================
@@ -36,25 +40,19 @@ private:
 	VulkanDevice* device;
 	Mesh mesh;
 
-	VkBuffer vertexBuffer;
-	VkDeviceMemory vertexBufferMemory;
-	VkBuffer indexBuffer;
-	VkDeviceMemory indexBufferMemory;
-
-	// Albedo
-	VkImage albedoImage;
-	VkDeviceMemory albedoImageMemory;
-	// Normal
-	VkImage normalImage;
-	VkDeviceMemory normalImageMemory;
-
 	skel::MvpInfo mvp;
-	VkDeviceMemory mvpBufferMemory;
+
+	// Texture data
+	std::vector<VkImage> images;
+	std::vector<VkDeviceMemory> imageMemories;
 
 public:
 	skel::Transform transform;
-	VkDeviceMemory lightBufferMemory;
+	VkDeviceMemory* mvpMemory;
+	VkDeviceMemory* lightBufferMemory;
 	BaseShader shader;
+
+	std::vector<VkDeviceMemory> bufferMemories;
 
 // ==============================================
 // Functions
@@ -64,93 +62,61 @@ public:
 	Object(
 		VulkanDevice* _device,
 		const char* _modelDirectory,
-		skel::shaders::ShaderTypes _shaderType,
-		const char* _albedoDirectory,
-		const char* _normalDirectory
+		skel::shaders::ShaderTypes _shaderType
 		) : device(_device)
 	{
 		mvp.model = glm::mat4(1.0f);
 
-		mesh = LoadMesh(_modelDirectory);
-		device->CreateAndFillBuffer(
-			mesh.vertices.data(),
-			sizeof(mesh.vertices[0]) * static_cast<uint32_t>(mesh.vertices.size()),
-			vertexBuffer,
-			vertexBufferMemory,
-			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-		);
-		device->CreateAndFillBuffer(
-			mesh.indices.data(),
-			sizeof(mesh.indices[0]) * static_cast<uint32_t>(mesh.indices.size()),
-			indexBuffer,
-			indexBufferMemory,
-			VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-		);
-
-		VkImageView& albedoImageView = shader.AddImageView();
-		VkSampler& albedoSampler = shader.AddSampler();
-		skel::CreateTexture(device, _albedoDirectory, albedoImage, albedoImageMemory, albedoImageView, albedoSampler);
-
-		VkImageView& normalImageView = shader.AddImageView();
-		VkSampler& normalSampler = shader.AddSampler();
-		skel::CreateTexture(device, _normalDirectory, normalImage, normalImageMemory, normalImageView, normalSampler);
-
-		CreateUniformBuffers();
+		mesh = LoadMesh(device, _modelDirectory);
 	}
 
 	// Destroy this object's buffers
 	~Object()
 	{
-		vkDestroyBuffer	(device->logicalDevice, vertexBuffer      , nullptr);
-		vkFreeMemory	(device->logicalDevice, vertexBufferMemory, nullptr);
-		vkDestroyBuffer	(device->logicalDevice, indexBuffer       , nullptr);
-		vkFreeMemory	(device->logicalDevice, indexBufferMemory , nullptr);
+		for (auto& memory : bufferMemories)
+		{
+			vkFreeMemory(device->logicalDevice, memory, nullptr);
+		}
 
-		vkDestroyBuffer	(device->logicalDevice, shader.mvpBuffer  , nullptr);
-		vkFreeMemory	(device->logicalDevice, mvpBufferMemory       , nullptr);
-		vkDestroyBuffer	(device->logicalDevice, shader.lightBuffer, nullptr);
-		vkFreeMemory	(device->logicalDevice, lightBufferMemory     , nullptr);
-
-		vkDestroyImage		(device->logicalDevice, albedoImage                  , nullptr);
-		vkFreeMemory		(device->logicalDevice, albedoImageMemory            , nullptr);
-		vkDestroyImageView	(device->logicalDevice, shader.albedoImageView   , nullptr);
-		vkDestroySampler	(device->logicalDevice, shader.albedoImageSampler, nullptr);
-
-		vkDestroyImage		(device->logicalDevice, normalImage                  , nullptr);
-		vkFreeMemory		(device->logicalDevice, normalImageMemory            , nullptr);
-		vkDestroyImageView	(device->logicalDevice, shader.normalImageView   , nullptr);
-		vkDestroySampler	(device->logicalDevice, shader.normalImageSampler, nullptr);
+		for (uint32_t i = 0; i < static_cast<uint32_t>(images.size()); i++)
+		{
+			vkDestroyImage(device->logicalDevice, images[i], nullptr);
+			vkFreeMemory(device->logicalDevice, imageMemories[i], nullptr);
+		}
 
 		shader.Cleanup(device->logicalDevice);
+		mesh.Cleanup(device->logicalDevice);
 	}
 
-	// Create the MVP and light buffers for their uniforms
-	void CreateUniformBuffers()
+	void AttachTexture(const char* _directory)
 	{
-		VkDeviceSize mvpBufferSize = sizeof(skel::MvpInfo);
-		VkDeviceSize lightBufferSize = sizeof(skel::lights::ShaderLights);
+		VkImage* textureImage = new VkImage();
+		images.push_back(*textureImage);
+		VkImage& image = images[static_cast<uint32_t>(images.size()) - 1];
 
-		VkBuffer& mvpBuffer = shader.AddBuffer();
+		VkDeviceMemory* textureMemory = new VkDeviceMemory();
+		imageMemories.push_back(*textureMemory);
+		VkDeviceMemory& memory = imageMemories[static_cast<uint32_t>(imageMemories.size()) - 1];
+
+		VkImageView& view = shader.AddImageView();
+		VkSampler& sampler = shader.AddSampler();
+		skel::CreateTexture(device, _directory, image, memory, view, sampler);
+	}
+
+	void AttachBuffer(VkDeviceSize _size)
+	{
+		VkBuffer& shaderBuffer = shader.AddBuffer();
+
+		VkDeviceMemory* memory = new VkDeviceMemory();
+		bufferMemories.push_back(*memory);
+		VkDeviceMemory& bufferMemory = bufferMemories[static_cast<uint32_t>(bufferMemories.size()) - 1];
 
 		device->CreateBuffer(
-			mvpBufferSize,
+			_size,
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			 mvpBuffer,
-			mvpBufferMemory
-		);
-
-		VkBuffer& lightBuffer = shader.AddBuffer();
-
-		device->CreateBuffer(
-			lightBufferSize,
-			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			//shader.lightBuffer,
-			lightBuffer,
-			lightBufferMemory
+			shaderBuffer,
+			bufferMemory
 		);
 	}
 
@@ -158,8 +124,8 @@ public:
 	void Draw(VkCommandBuffer _commandBuffer, VkPipelineLayout pipelineLayout)
 	{
 		VkDeviceSize offsets[] = { 0 };
-		vkCmdBindVertexBuffers(_commandBuffer, 0, 1, &vertexBuffer, offsets);
-		vkCmdBindIndexBuffer(_commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdBindVertexBuffers(_commandBuffer, 0, 1, &mesh.vertexBuffer, offsets);
+		vkCmdBindIndexBuffer(_commandBuffer, mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 		vkCmdBindDescriptorSets(_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &shader.descriptorSet, 0, nullptr);
 		vkCmdDrawIndexed(_commandBuffer, (uint32_t)mesh.indices.size(), 1, 0, 0, 0);
 	}
@@ -176,7 +142,7 @@ public:
 		mvp.view		= _view;
 		mvp.proj		= _projection;
 		mvp.camPosition = _camPosition;
-		device->CopyDataToBufferMemory(&mvp, sizeof(mvp), mvpBufferMemory);
+		device->CopyDataToBufferMemory(&mvp, sizeof(mvp), *mvpMemory);
 	}
 
 };

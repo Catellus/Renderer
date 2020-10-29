@@ -32,14 +32,6 @@ public:
 	std::vector<VkImageView> imageViews = {};
 	std::vector<VkSampler> samplers = {};
 
-	VkBuffer mvpBuffer;		// skel::mvpInfo
-	VkBuffer lightBuffer;	// skel::lights::ShaderLights
-
-	VkImageView albedoImageView;
-	VkSampler albedoImageSampler;
-	VkImageView normalImageView;
-	VkSampler normalImageSampler;
-
 	VkBuffer& AddBuffer()
 	{
 		VkBuffer* tmpBuffer = new VkBuffer();
@@ -65,8 +57,7 @@ public:
 	{
 		uint32_t descriptorIndex = 0;
 		uint64_t buffersSize = static_cast<uint64_t>(buffers.size());
-		//uint64_t imagesSize  = static_cast<uint64_t>(imageViews.size());
-		uint64_t imagesSize = 2;
+		uint64_t imagesSize  = static_cast<uint64_t>(imageViews.size());
 		_outSet.resize(buffersSize + imagesSize);
 		bufferDescriptors.resize(buffersSize);
 		imageDescriptors.resize(imagesSize);
@@ -101,7 +92,7 @@ public:
 
 	}
 
-	void Cleanup(VkDevice _device)
+	void Cleanup(VkDevice& _device)
 	{
 		for (auto buffer : buffers)
 		{
@@ -120,13 +111,8 @@ namespace skel
 {
 	namespace shaders
 	{
-// ==============================================
-// OPAQUE
-// ==============================================
-
- // TODO : Generalize this
 		// Handles the descriptor information for the render pipeline about opaque shaders
-		struct OpaqueDescriptorInformation
+		struct ShaderDescriptorInformation
 		{
 			VkDescriptorSetLayout descriptorSetLayout;
 			VkDescriptorPool descriptorPool;
@@ -210,109 +196,6 @@ namespace skel
 			}
 		};
 
-// ==============================================
-// UNLIT
-// ==============================================
-
-		// Information used by unlit shaders
-		struct UnlitInformation
-		{
-			VkBuffer mvpBuffer;		// skel::mvpInfo
-			VkBuffer objectColor;
-
-			VkDescriptorSet descriptorSet;
-		};
-
-		// Handles the descriptor information for the render pipeline about unlit shaders
-		struct UnlitDescriptorInformation
-		{
-			VkDescriptorSetLayout descriptorSetLayout;
-			VkDescriptorPool descriptorPool;
-
-			void CreateDescriptorSetLayout(VkDevice& _device)
-			{
-				std::vector<VkDescriptorSetLayoutBinding> layoutBindings = {
-					skel::initializers::DescriptorSetLyoutBinding(	// MVP matrices
-						VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-						VK_SHADER_STAGE_VERTEX_BIT,
-						0
-					),
-					skel::initializers::DescriptorSetLyoutBinding(	// Object color
-						VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-						VK_SHADER_STAGE_FRAGMENT_BIT,
-						1
-					)
-				};
-
-				VkDescriptorSetLayoutCreateInfo createInfo = {};
-				createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-				createInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
-				createInfo.pBindings = layoutBindings.data();
-
-				if (vkCreateDescriptorSetLayout(_device, &createInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
-					throw std::runtime_error("Failed to create a descriptor set layout");
-			}
-
-			void CreateDescriptorPool(VkDevice& _device, uint32_t _objectCount)
-			{
-				std::vector<VkDescriptorPoolSize> poolSizes = {
-					skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),	// MVP matrices
-					skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),	// Object color
-				};
-
-				VkDescriptorPoolCreateInfo createInfo = {};
-				createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-				createInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-				createInfo.pPoolSizes = poolSizes.data();
-				createInfo.maxSets = _objectCount;
-
-				if (vkCreateDescriptorPool(_device, &createInfo, nullptr, &descriptorPool) != VK_SUCCESS)
-					throw std::runtime_error("Failed to create descriptor pool");
-			}
-
-			void CreateDescriptorSets(VkDevice& _device, skel::shaders::UnlitInformation& _shaderInfo)
-			{
-				VkDescriptorSetAllocateInfo allocInfo = {};
-				allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-				allocInfo.descriptorPool = descriptorPool;
-				allocInfo.descriptorSetCount = 1;
-				allocInfo.pSetLayouts = &descriptorSetLayout;
-
-				if (vkAllocateDescriptorSets(_device, &allocInfo, &_shaderInfo.descriptorSet) != VK_SUCCESS)
-					throw std::runtime_error("Failed to create descriptor sets");
-
-				VkDescriptorBufferInfo mvpInfo = {};
-				mvpInfo.offset = 0;
-				mvpInfo.range = VK_WHOLE_SIZE; //sizeof(skel::MvpInfo);
-				mvpInfo.buffer = _shaderInfo.mvpBuffer;
-
-				VkDescriptorBufferInfo objectColorInfo = {};
-				objectColorInfo.offset = 0;
-				objectColorInfo.range = VK_WHOLE_SIZE; //sizeof(glm::vec3);
-				objectColorInfo.buffer = _shaderInfo.objectColor;
-
-				std::vector<VkWriteDescriptorSet> descriptorWrites = {
-					skel::initializers::WriteDescriptorSet(	// MVP matrices
-						_shaderInfo.descriptorSet,
-						VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-						&mvpInfo,
-						0),
-					skel::initializers::WriteDescriptorSet(	// Object color
-						_shaderInfo.descriptorSet,
-						VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-						&objectColorInfo,
-						1)
-				};
-
-				vkUpdateDescriptorSets(_device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
-			}
-
-			void Cleanup(VkDevice& _device)
-			{
-				vkDestroyDescriptorSetLayout(_device, descriptorSetLayout, nullptr);
-				vkDestroyDescriptorPool(_device, descriptorPool, nullptr);
-			}
-		};
 	}
 }
 

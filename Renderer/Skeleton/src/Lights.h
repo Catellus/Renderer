@@ -17,7 +17,8 @@ namespace skel
 		{
 			alignas(16) glm::vec3 color;
 			alignas(16) glm::vec3 position;
-			alignas(16) glm::vec3 ConstantLinearQuadratic;
+			// Constant, Linear, Quadratic
+			alignas(16) glm::vec3 CLQ;
 		};
 
 		struct SpotLight
@@ -25,7 +26,8 @@ namespace skel
 			alignas(16) glm::vec3 color;
 			alignas(16) glm::vec3 position;
 			alignas(16) glm::vec3 direction;
-			alignas(16) glm::vec3 ConstantLinearQuadratic;
+			// Constant, Linear, Quadratic
+			alignas(16) glm::vec3 CLQ;
 			alignas(4) float cutOff;
 			alignas(4) float outerCutOff;
 		};

@@ -81,8 +81,8 @@ private:
 	const char* engineTitle = "TestEngine";
 	const uint32_t engineVersion = VK_MAKE_VERSION(0, 0, 0);
 
-	uint32_t windowWidth = 800;
-	uint32_t windowHeight = 600;
+	uint32_t windowWidth = 1024;
+	uint32_t windowHeight = 1024;
 	const char* windowTitle = "Window Title";
 	GLFWwindow* window;
 	bool windowResized = false;
@@ -125,12 +125,13 @@ private:
 	VkImageView depthImageView;
 
 // ===== Shaders =====
-	skel::shaders::OpaqueDescriptorInformation defaultShaderDescriptor;
+	skel::shaders::ShaderDescriptorInformation defaultShaderDescriptor;
 
 // ===== Objects =====
 	Camera* cam;
 	std::vector<Object*> testObjects;
-	Object* BulbObject;
+	std::vector<Object*> bulbs;
+	VkDeviceMemory* bulbColorMemory;
 
 	skel::lights::ShaderLights finalLights;
 
@@ -151,6 +152,7 @@ private:
 	void Initialize()
 	{
 		testObjects.resize(8);
+		bulbs.resize(4);
 
 		// Fundamental setup
 		CreateWindow();
@@ -162,7 +164,7 @@ private:
 
 		// Setup opaque shader uniform buffers
 		defaultShaderDescriptor.CreateDescriptorSetLayout(device->logicalDevice);
-		defaultShaderDescriptor.CreateDescriptorPool(device->logicalDevice, static_cast<uint32_t>(testObjects.size()) + 1);
+		defaultShaderDescriptor.CreateDescriptorPool(device->logicalDevice, static_cast<uint32_t>(testObjects.size()) + 4);
 
 		// Create the render pipeline
 		CreatePipelineLayout(&defaultShaderDescriptor.descriptorSetLayout);
@@ -183,50 +185,67 @@ private:
 		float circleIncrement = (2.0f * 3.14159f) / static_cast<uint32_t>(testObjects.size());
 		for (auto& testObject : testObjects)
 		{
-			testObject = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Opaque, albedoTextureDir.c_str(), normalTextureDir.c_str());
+			testObject = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Opaque);
+			testObject->AttachTexture(albedoTextureDir.c_str());
+			testObject->AttachTexture(normalTextureDir.c_str());
+			testObject->AttachBuffer(sizeof(skel::MvpInfo));
+			testObject->AttachBuffer(sizeof(skel::lights::ShaderLights));
+			testObject->mvpMemory = &testObject->bufferMemories[0];
+			testObject->lightBufferMemory = &testObject->bufferMemories[1];
 
 			defaultShaderDescriptor.CreateDescriptorSets(device->logicalDevice, testObject->shader);
 			testObject->transform.position.x = glm::cos(index * circleIncrement);	// Arrange in a circle
 			testObject->transform.position.y = glm::sin(index * circleIncrement);	// Arrange in a circle
 			testObject->transform.scale = glm::vec3(0.3f);							// Arrange in a circle
-			testObject->transform.rotation = {0.0f, 10.0f * index, 5.0f * index};	// Arrange in a circle
+			//testObject->transform.rotation = {0.0f, 10.0f * index, 5.0f * index};	// Arrange in a circle
 			//testObject->transform.position.x = index;			// Arrange in a line
 			//testObject->transform.scale = glm::vec3(0.5f);	// Arrange in a line
 			index++;
 		}
 
-		BulbObject = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Unlit, albedoTextureDir.c_str(), normalTextureDir.c_str());
-		defaultShaderDescriptor.CreateDescriptorSets(device->logicalDevice, BulbObject->shader);
-		BulbObject->transform.position = { 0.0f, 0.0f, 0.0f };
-		BulbObject->transform.scale *= 0.1f;
-
 		// Define lighting
 		// Point lights
 		finalLights.pointLights[0].color = { 1.0f, 1.0f, 1.0f };
-		finalLights.pointLights[0].position = { 1.0f, 1.0f, 1.0f };
-		finalLights.pointLights[0].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.pointLights[0].position = { 1.0f, 1.0f, 2.0f };
+		finalLights.pointLights[0].CLQ = { 1.0f, 0.35f, 0.44f };
 		finalLights.pointLights[1].color = { 1.0f, 0.0f, 0.0f };
-		finalLights.pointLights[1].position = { -1.0f, 1.0f, 1.0f };
-		finalLights.pointLights[1].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.pointLights[1].position = { -1.0f, 1.0f, 2.0f };
+		finalLights.pointLights[1].CLQ = { 1.0f, 0.35f, 0.44f };
 		finalLights.pointLights[2].color = { 0.0f, 1.0f, 0.0f };
-		finalLights.pointLights[2].position = { -1.0f, -1.0f, 1.0f };
-		finalLights.pointLights[2].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.pointLights[2].position = { -1.0f, -1.0f, 2.0f };
+		finalLights.pointLights[2].CLQ = { 1.0f, 0.35f, 0.44f };
 		finalLights.pointLights[3].color = { 0.0f, 0.0f, 1.0f };
-		finalLights.pointLights[3].position = { 1.0f, -1.0f, 1.0f };
-		finalLights.pointLights[3].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.pointLights[3].position = { 1.0f, -1.0f, 2.0f };
+		finalLights.pointLights[3].CLQ = { 1.0f, 0.35f, 0.44f };
 		// Spotlights
 		finalLights.spotLights[0].color = { 1.0f, 0.2f, 0.1f };
-		finalLights.spotLights[0].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.spotLights[0].CLQ = { 1.0f, 0.35f, 0.44f };
 		finalLights.spotLights[0].cutOff = glm::cos(glm::radians(2.0f));
 		finalLights.spotLights[1].color = { 0.1f, 0.1f, 1.0f };
-		finalLights.spotLights[1].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
+		finalLights.spotLights[1].CLQ = { 1.0f, 0.35f, 0.44f };
 		finalLights.spotLights[1].cutOff = glm::cos(glm::radians(2.0f));
 
 		for (auto& testObject : testObjects)
 		{
-			device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), testObject->lightBufferMemory);
+			device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), *testObject->lightBufferMemory);
 		}
-		device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), BulbObject->lightBufferMemory);
+
+		index = 0;
+		for (auto& object : bulbs)
+		{
+			object = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Unlit);
+			object->AttachBuffer(sizeof(skel::MvpInfo));
+			object->AttachBuffer(sizeof(glm::vec3));
+			object->mvpMemory = &object->bufferMemories[0];
+			bulbColorMemory = &object->bufferMemories[1];
+			defaultShaderDescriptor.CreateDescriptorSets(device->logicalDevice, object->shader);
+			object->transform.position = finalLights.pointLights[index].position;
+			object->transform.scale *= 0.05f;
+			//glm::vec3 bulbColor = finalLights.pointLights[index].color;
+			device->CopyDataToBufferMemory(&finalLights.pointLights[index].color, sizeof(glm::vec3), *bulbColorMemory);
+
+			index++;
+		}
 
 		// Bind render commands
 		commandBuffers = CrateCommandBuffers();
@@ -1022,7 +1041,10 @@ private:
 
 			// Unlit pipeline
 			vkCmdBindPipeline(cmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, unlitPipeline);
-			BulbObject->Draw(cmdBuffers[i], pipelineLayout);
+			for (auto& object : bulbs)
+			{
+				object->Draw(cmdBuffers[i], pipelineLayout);
+			}
 
 			// Complete the recording
 			EndCommandBuffer(cmdBuffers[i]);
@@ -1184,19 +1206,6 @@ private:
 	// Updates the MVP matrix for this frame
 	void UpdateObjectUniforms()
 	{
-		for (auto& testObject : testObjects)
-		{
-			//testObject->transform.position.x = glm::sin(time.totalTime);
-			//testObject->transform.rotation.y = glm::sin(time.totalTime) * 30.0f;
-			//testObject->transform.rotation.z = glm::cos(time.totalTime) * 30.0f;
-
-			testObject->transform.position.z = glm::cos(time.totalTime);
-
-			testObject->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
-		}
-
-		BulbObject->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
-
 		finalLights.spotLights[0].position = cam->cameraPosition;
 		finalLights.spotLights[0].direction = cam->cameraFront;
 		finalLights.spotLights[0].outerCutOff = glm::cos(glm::radians(5.0f + glm::cos(time.totalTime)));
@@ -1206,11 +1215,19 @@ private:
 
 		for (auto& testObject : testObjects)
 		{
-			device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), testObject->lightBufferMemory);
-		}
-		device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), BulbObject->lightBufferMemory);
+			//testObject->transform.position.x = glm::sin(time.totalTime);
+			//testObject->transform.rotation.y = glm::sin(time.totalTime) * 30.0f;
+			//testObject->transform.rotation.z = glm::cos(time.totalTime) * 30.0f;
 
-		
+			testObject->transform.position.z = glm::cos(time.totalTime);
+			testObject->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
+			device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), *testObject->lightBufferMemory);
+		}
+
+		for (auto& object : bulbs)
+		{
+			object->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
+		}
 	}
 
 // ==============================================
@@ -1250,7 +1267,10 @@ private:
 			delete(testObject);
 		}
 
-		delete(BulbObject);
+		for (auto& object : bulbs)
+		{
+			delete(object);
+		}
 
 		defaultShaderDescriptor.Cleanup(device->logicalDevice);
 

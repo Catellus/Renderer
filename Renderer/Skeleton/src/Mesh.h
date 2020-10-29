@@ -22,6 +22,8 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tinyobjloader/tiny_obj_loader.h>
 
+#include "VulkanDevice.h"
+
 // Holds vertex information and its handles descriptions
 struct Vertex {
 	glm::vec3 position;
@@ -79,39 +81,24 @@ struct Mesh
 {
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
+
+	VkBuffer vertexBuffer;
+	VkDeviceMemory vertexBufferMemory;
+	VkBuffer indexBuffer;
+	VkDeviceMemory indexBufferMemory;
+
+	void Cleanup(VkDevice& _device)
+	{
+		vkDestroyBuffer(_device, vertexBuffer, nullptr);
+		vkFreeMemory(_device, vertexBufferMemory, nullptr);
+		vkDestroyBuffer(_device, indexBuffer, nullptr);
+		vkFreeMemory(_device, indexBufferMemory, nullptr);
+	}
 };
-
-// A crude candy corn
-//const std::vector<Vertex> verts = {
-//	{{ 0.0f  , -0.65f, 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //0
-//	{{ 0.1f  , -0.6f , 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //1
-//	{{-0.1f  , -0.6f , 0.0f}, {1.0f, 1.0f , 1.0f }, {0.0f, 0.0f}}, //2
-//	{{ 0.25f , -0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //3
-//	{{-0.25f , -0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //4
-//	{{ 0.35f ,  0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //5
-//	{{-0.35f ,  0.2f , 0.0f}, {1.0f, 0.32f, 0.02f}, {0.0f, 0.0f}}, //6
-//	{{ 0.4f  ,  0.5f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //7
-//	{{-0.4f  ,  0.5f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //8
-//	{{ 0.325f,  0.6f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //9
-//	{{-0.325f,  0.6f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //10
-//	{{ 0.2f  ,  0.65f, 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //11
-//	{{-0.2f  ,  0.65f, 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //12
-//	{{ 0.0f  ,  0.7f , 0.0f}, {1.0f, 0.86f, 0.0f }, {0.0f, 0.0f}}, //13
-//};
-
-//const std::vector<uint16_t> indices = {
-//	0, 1, 2,
-//	2, 1, 3, 3, 4, 2,
-//	4, 3, 5, 5, 6, 4,
-//	5, 7, 6, 6, 7, 8,
-//	7, 9, 8, 8, 9, 10,
-//	9, 11, 10, 10, 11, 12,
-//	11, 13, 12,
-//};
 
 // Loads the object from disk
 // Returns a mesh built from the input file
-Mesh LoadMesh(const char* _directory)
+Mesh LoadMesh(VulkanDevice* _device, const char* _directory)
 {
 	// Load the mesh with Tinyobj
 	tinyobj::attrib_t attrib;
@@ -158,6 +145,23 @@ Mesh LoadMesh(const char* _directory)
 			endMesh.indices.push_back(uniqueVerts[vert]);
 		}
 	}
+
+	_device->CreateAndFillBuffer(
+		endMesh.vertices.data(),
+		sizeof(endMesh.vertices[0]) * static_cast<uint32_t>(endMesh.vertices.size()),
+		endMesh.vertexBuffer,
+		endMesh.vertexBufferMemory,
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+	);
+	_device->CreateAndFillBuffer(
+		endMesh.indices.data(),
+		sizeof(endMesh.indices[0]) * static_cast<uint32_t>(endMesh.indices.size()),
+		endMesh.indexBuffer,
+		endMesh.indexBufferMemory,
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+	);
 
 	return endMesh;
 }
