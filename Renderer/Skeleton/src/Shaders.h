@@ -19,24 +19,110 @@ namespace skel
 			Opaque = 0,
 			Unlit = 1
 		};
+	}
+}
 
+class BaseShader
+{
+public:
+	skel::shaders::ShaderTypes type;
+	VkDescriptorSet descriptorSet;
+
+	std::vector<VkBuffer> buffers = {};
+	std::vector<VkImageView> imageViews = {};
+	std::vector<VkSampler> samplers = {};
+
+	VkBuffer mvpBuffer;		// skel::mvpInfo
+	VkBuffer lightBuffer;	// skel::lights::ShaderLights
+
+	VkImageView albedoImageView;
+	VkSampler albedoImageSampler;
+	VkImageView normalImageView;
+	VkSampler normalImageSampler;
+
+	VkBuffer& AddBuffer()
+	{
+		VkBuffer* tmpBuffer = new VkBuffer();
+		buffers.push_back(*tmpBuffer);
+		return buffers[static_cast<uint32_t>(buffers.size()) - 1];
+	}
+
+	VkImageView& AddImageView()
+	{
+		VkImageView* tmpView = new VkImageView();
+		imageViews.push_back(*tmpView);
+		return imageViews[static_cast<uint32_t>(imageViews.size()) -1];
+	}
+
+	VkSampler& AddSampler()
+	{
+		VkSampler* tmpSampler = new VkSampler();
+		samplers.push_back(*tmpSampler);
+		return samplers[static_cast<uint32_t>(samplers.size()) - 1];
+	}
+
+	void GetDescriptorWriteSets(std::vector<VkWriteDescriptorSet>& _outSet, std::vector<VkDescriptorBufferInfo>& bufferDescriptors, std::vector<VkDescriptorImageInfo>& imageDescriptors)
+	{
+		uint32_t descriptorIndex = 0;
+		uint64_t buffersSize = static_cast<uint64_t>(buffers.size());
+		//uint64_t imagesSize  = static_cast<uint64_t>(imageViews.size());
+		uint64_t imagesSize = 2;
+		_outSet.resize(buffersSize + imagesSize);
+		bufferDescriptors.resize(buffersSize);
+		imageDescriptors.resize(imagesSize);
+
+		VkWriteDescriptorSet tmp;
+
+		for (auto& buffer : buffers)
+		{
+			VkDescriptorBufferInfo bufferDescriptor = {};
+			bufferDescriptor.offset = 0;
+			bufferDescriptor.range = VK_WHOLE_SIZE;
+			bufferDescriptor.buffer = buffer;
+			bufferDescriptors[descriptorIndex] = bufferDescriptor;
+			tmp = skel::initializers::WriteDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &bufferDescriptors[descriptorIndex], descriptorIndex);
+			_outSet[descriptorIndex] = tmp;
+
+			descriptorIndex++;
+		}
+
+		for (uint32_t i = 0; i < imagesSize; i++)
+		{
+			VkDescriptorImageInfo imageDescriptor = {};
+			imageDescriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageDescriptor.imageView = imageViews[i];
+			imageDescriptor.sampler = samplers[i];
+			imageDescriptors[i] = imageDescriptor;
+			tmp = skel::initializers::WriteDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imageDescriptors[i], descriptorIndex);
+			_outSet[descriptorIndex] = tmp;
+
+			descriptorIndex++;
+		}
+
+	}
+
+	void Cleanup(VkDevice _device)
+	{
+		for (auto buffer : buffers)
+		{
+			vkDestroyBuffer(_device, buffer, nullptr);
+		}
+
+		for (uint32_t i = 0; i < static_cast<uint32_t>(imageViews.size()); i++)
+		{
+			vkDestroyImageView(_device, imageViews[i], nullptr);
+			vkDestroySampler(_device, samplers[i], nullptr);
+		}
+	}
+};
+
+namespace skel
+{
+	namespace shaders
+	{
 // ==============================================
 // OPAQUE
 // ==============================================
-
-		// Information used by opaque shaders
-		struct OpaqueInformation
-		{
-			VkBuffer mvpBuffer;		// skel::mvpInfo
-			VkBuffer lightBuffer;	// skel::lights::ShaderLights
-
-			VkImageView albedoImageView;
-			VkSampler albedoImageSampler;
-			VkImageView normalImageView;
-			VkSampler normalImageSampler;
-
-			VkDescriptorSet descriptorSet;
-		};
 
  // TODO : Generalize this
 		// Handles the descriptor information for the render pipeline about opaque shaders
@@ -98,7 +184,7 @@ namespace skel
 					throw std::runtime_error("Failed to create descriptor pool");
 			}
 
-			void CreateDescriptorSets(VkDevice& _device, skel::shaders::OpaqueInformation& _shaderInfo)
+			void CreateDescriptorSets(VkDevice& _device, BaseShader& _shaderInfo)
 			{
 				VkDescriptorSetAllocateInfo allocInfo = {};
 				allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -109,48 +195,10 @@ namespace skel
 				if (vkAllocateDescriptorSets(_device, &allocInfo, &_shaderInfo.descriptorSet) != VK_SUCCESS)
 					throw std::runtime_error("Failed to create descriptor sets");
 
-				VkDescriptorBufferInfo mvpInfo = {};
-				mvpInfo.offset = 0;
-				mvpInfo.range = VK_WHOLE_SIZE; //sizeof(skel::MvpInfo);
-				mvpInfo.buffer = _shaderInfo.mvpBuffer;
-
-				VkDescriptorBufferInfo lightInfo = {};
-				lightInfo.offset = 0;
-				lightInfo.range = VK_WHOLE_SIZE; //sizeof(skel::lights::ShaderLights);
-				lightInfo.buffer = _shaderInfo.lightBuffer;
-
-				VkDescriptorImageInfo albedoInfo = {};
-				albedoInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-				albedoInfo.imageView = _shaderInfo.albedoImageView;
-				albedoInfo.sampler = _shaderInfo.albedoImageSampler;
-
-				VkDescriptorImageInfo normalInfo = {};
-				normalInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-				normalInfo.imageView = _shaderInfo.normalImageView;
-				normalInfo.sampler = _shaderInfo.normalImageSampler;
-
-				std::vector<VkWriteDescriptorSet> descriptorWrites = {
-					skel::initializers::WriteDescriptorSet(	// MVP matrices
-						_shaderInfo.descriptorSet,
-						VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-						&mvpInfo,
-						0),
-					skel::initializers::WriteDescriptorSet(	// Light infos
-						_shaderInfo.descriptorSet,
-						VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-						&lightInfo,
-						1),
-					skel::initializers::WriteDescriptorSet(	// Albedo map
-						_shaderInfo.descriptorSet,
-						VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-						&albedoInfo,
-						2),
-					skel::initializers::WriteDescriptorSet(	// Normal map
-						_shaderInfo.descriptorSet,
-						VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-						&normalInfo,
-						3),
-				};
+				std::vector<VkWriteDescriptorSet> descriptorWrites;
+				std::vector<VkDescriptorBufferInfo> bufferInfos;
+				std::vector<VkDescriptorImageInfo> imageInfos;
+				_shaderInfo.GetDescriptorWriteSets(descriptorWrites, bufferInfos, imageInfos);
 
 				vkUpdateDescriptorSets(_device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 			}

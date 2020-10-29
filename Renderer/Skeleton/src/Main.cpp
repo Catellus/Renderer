@@ -185,7 +185,7 @@ private:
 		{
 			testObject = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Opaque, albedoTextureDir.c_str(), normalTextureDir.c_str());
 
-			defaultShaderDescriptor.CreateDescriptorSets(device->logicalDevice, testObject->defaultShaderInfo);
+			defaultShaderDescriptor.CreateDescriptorSets(device->logicalDevice, testObject->shader);
 			testObject->transform.position.x = glm::cos(index * circleIncrement);	// Arrange in a circle
 			testObject->transform.position.y = glm::sin(index * circleIncrement);	// Arrange in a circle
 			testObject->transform.scale = glm::vec3(0.3f);							// Arrange in a circle
@@ -196,7 +196,7 @@ private:
 		}
 
 		BulbObject = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Unlit, albedoTextureDir.c_str(), normalTextureDir.c_str());
-		defaultShaderDescriptor.CreateDescriptorSets(device->logicalDevice, BulbObject->defaultShaderInfo);
+		defaultShaderDescriptor.CreateDescriptorSets(device->logicalDevice, BulbObject->shader);
 		BulbObject->transform.position = { 0.0f, 0.0f, 0.0f };
 		BulbObject->transform.scale *= 0.1f;
 
@@ -216,17 +216,11 @@ private:
 		finalLights.pointLights[3].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
 		// Spotlights
 		finalLights.spotLights[0].color = { 1.0f, 0.2f, 0.1f };
-		finalLights.spotLights[0].position = cam->cameraPosition;
-		finalLights.spotLights[0].direction = cam->cameraFront;
 		finalLights.spotLights[0].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
 		finalLights.spotLights[0].cutOff = glm::cos(glm::radians(2.0f));
-		finalLights.spotLights[0].outerCutOff = glm::cos(glm::radians(5.0f + glm::cos(time.totalTime)));
 		finalLights.spotLights[1].color = { 0.1f, 0.1f, 1.0f };
-		finalLights.spotLights[1].position = cam->cameraPosition;
-		finalLights.spotLights[1].direction = cam->cameraFront;
 		finalLights.spotLights[1].ConstantLinearQuadratic = { 1.0f, 0.35f, 0.44f };
 		finalLights.spotLights[1].cutOff = glm::cos(glm::radians(2.0f));
-		finalLights.spotLights[1].outerCutOff = glm::cos(glm::radians(5.0f + glm::cos(time.totalTime + 3.14159f)));
 
 		for (auto& testObject : testObjects)
 		{
@@ -1195,10 +1189,28 @@ private:
 			//testObject->transform.position.x = glm::sin(time.totalTime);
 			//testObject->transform.rotation.y = glm::sin(time.totalTime) * 30.0f;
 			//testObject->transform.rotation.z = glm::cos(time.totalTime) * 30.0f;
+
+			testObject->transform.position.z = glm::cos(time.totalTime);
+
 			testObject->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
 		}
 
 		BulbObject->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
+
+		finalLights.spotLights[0].position = cam->cameraPosition;
+		finalLights.spotLights[0].direction = cam->cameraFront;
+		finalLights.spotLights[0].outerCutOff = glm::cos(glm::radians(5.0f + glm::cos(time.totalTime)));
+		finalLights.spotLights[1].position = cam->cameraPosition;
+		finalLights.spotLights[1].direction = cam->cameraFront;
+		finalLights.spotLights[1].outerCutOff = glm::cos(glm::radians(5.0f + glm::cos(time.totalTime + 3.14159f)));
+
+		for (auto& testObject : testObjects)
+		{
+			device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), testObject->lightBufferMemory);
+		}
+		device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), BulbObject->lightBufferMemory);
+
+		
 	}
 
 // ==============================================

@@ -54,7 +54,7 @@ private:
 public:
 	skel::Transform transform;
 	VkDeviceMemory lightBufferMemory;
-	skel::shaders::OpaqueInformation defaultShaderInfo;
+	BaseShader shader;
 
 // ==============================================
 // Functions
@@ -70,7 +70,6 @@ public:
 		) : device(_device)
 	{
 		mvp.model = glm::mat4(1.0f);
-		defaultShaderInfo = {};
 
 		mesh = LoadMesh(_modelDirectory);
 		device->CreateAndFillBuffer(
@@ -90,8 +89,13 @@ public:
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
 		);
 
-		skel::CreateTexture(device, _albedoDirectory, albedoImage, albedoImageMemory, defaultShaderInfo.albedoImageView, defaultShaderInfo.albedoImageSampler);
-		skel::CreateTexture(device, _normalDirectory, normalImage, normalImageMemory, defaultShaderInfo.normalImageView, defaultShaderInfo.normalImageSampler);
+		VkImageView& albedoImageView = shader.AddImageView();
+		VkSampler& albedoSampler = shader.AddSampler();
+		skel::CreateTexture(device, _albedoDirectory, albedoImage, albedoImageMemory, albedoImageView, albedoSampler);
+
+		VkImageView& normalImageView = shader.AddImageView();
+		VkSampler& normalSampler = shader.AddSampler();
+		skel::CreateTexture(device, _normalDirectory, normalImage, normalImageMemory, normalImageView, normalSampler);
 
 		CreateUniformBuffers();
 	}
@@ -104,20 +108,22 @@ public:
 		vkDestroyBuffer	(device->logicalDevice, indexBuffer       , nullptr);
 		vkFreeMemory	(device->logicalDevice, indexBufferMemory , nullptr);
 
-		vkDestroyBuffer	(device->logicalDevice, defaultShaderInfo.mvpBuffer  , nullptr);
+		vkDestroyBuffer	(device->logicalDevice, shader.mvpBuffer  , nullptr);
 		vkFreeMemory	(device->logicalDevice, mvpBufferMemory       , nullptr);
-		vkDestroyBuffer	(device->logicalDevice, defaultShaderInfo.lightBuffer, nullptr);
+		vkDestroyBuffer	(device->logicalDevice, shader.lightBuffer, nullptr);
 		vkFreeMemory	(device->logicalDevice, lightBufferMemory     , nullptr);
 
 		vkDestroyImage		(device->logicalDevice, albedoImage                  , nullptr);
 		vkFreeMemory		(device->logicalDevice, albedoImageMemory            , nullptr);
-		vkDestroyImageView	(device->logicalDevice, defaultShaderInfo.albedoImageView   , nullptr);
-		vkDestroySampler	(device->logicalDevice, defaultShaderInfo.albedoImageSampler, nullptr);
+		vkDestroyImageView	(device->logicalDevice, shader.albedoImageView   , nullptr);
+		vkDestroySampler	(device->logicalDevice, shader.albedoImageSampler, nullptr);
 
 		vkDestroyImage		(device->logicalDevice, normalImage                  , nullptr);
 		vkFreeMemory		(device->logicalDevice, normalImageMemory            , nullptr);
-		vkDestroyImageView	(device->logicalDevice, defaultShaderInfo.normalImageView   , nullptr);
-		vkDestroySampler	(device->logicalDevice, defaultShaderInfo.normalImageSampler, nullptr);
+		vkDestroyImageView	(device->logicalDevice, shader.normalImageView   , nullptr);
+		vkDestroySampler	(device->logicalDevice, shader.normalImageSampler, nullptr);
+
+		shader.Cleanup(device->logicalDevice);
 	}
 
 	// Create the MVP and light buffers for their uniforms
@@ -126,19 +132,24 @@ public:
 		VkDeviceSize mvpBufferSize = sizeof(skel::MvpInfo);
 		VkDeviceSize lightBufferSize = sizeof(skel::lights::ShaderLights);
 
+		VkBuffer& mvpBuffer = shader.AddBuffer();
+
 		device->CreateBuffer(
 			mvpBufferSize,
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			 defaultShaderInfo.mvpBuffer,
+			 mvpBuffer,
 			mvpBufferMemory
 		);
+
+		VkBuffer& lightBuffer = shader.AddBuffer();
 
 		device->CreateBuffer(
 			lightBufferSize,
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			defaultShaderInfo.lightBuffer,
+			//shader.lightBuffer,
+			lightBuffer,
 			lightBufferMemory
 		);
 	}
@@ -149,7 +160,7 @@ public:
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(_commandBuffer, 0, 1, &vertexBuffer, offsets);
 		vkCmdBindIndexBuffer(_commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-		vkCmdBindDescriptorSets(_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &defaultShaderInfo.descriptorSet, 0, nullptr);
+		vkCmdBindDescriptorSets(_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &shader.descriptorSet, 0, nullptr);
 		vkCmdDrawIndexed(_commandBuffer, (uint32_t)mesh.indices.size(), 1, 0, 0, 0);
 	}
 
