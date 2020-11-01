@@ -17,6 +17,8 @@ An educational playground to figure out Vulkan, 3D graphics, and various renderi
 - Ray tracing
 - Better modularity
 ---
+![](HolidyExample.PNG)
+---
 ### Miscellaneous things I plan to learn & implement
 - Mimicking real-world cameras
 - Volumetric lighting

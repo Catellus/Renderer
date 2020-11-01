@@ -45,9 +45,9 @@ private:
 	const std::string fragShaderDir = SHADER_DIR + "default_frag.spv";
 	const std::string unlitVertShaderDir = SHADER_DIR + "unlit_vert.spv";
 	const std::string unlitFragShaderDir = SHADER_DIR + "unlit_frag.spv";
-	const std::string albedoTextureDir = TEXTURE_DIR + "White.png";
+	const std::string albedoTextureDir = TEXTURE_DIR + "PumpkinAlbedo.png";
 	const std::string normalTextureDir = TEXTURE_DIR + "TestNormalMap.png";
-	const std::string testModelDir = MODEL_DIR + "Cube.obj";
+	const std::string testModelDir = MODEL_DIR + "myPumpkin.obj";
 	Mesh testMesh;
 
 	// The properties of the surface created by GLFW
@@ -61,6 +61,12 @@ private:
 		{
 			return formats.size() && presentModes.size();
 		}
+	};
+
+	struct PipelineInformation {
+		VkRenderPass renderPass;
+		VkPipelineLayout layout;
+		VkPipeline pipeline;
 	};
 
 	struct ApplicationTimeInformation {
@@ -96,6 +102,7 @@ private:
 
 	VkRenderPass renderPass;
 	VkPipelineLayout pipelineLayout;
+	VkPipelineLayout unlitPipelineLayout;
 	VkPipeline pipeline;
 	VkPipeline unlitPipeline;
 
@@ -125,7 +132,8 @@ private:
 	VkImageView depthImageView;
 
 // ===== Shaders =====
-	skel::shaders::ShaderDescriptorInformation defaultShaderDescriptor;
+	skel::shaders::ShaderDescriptorInformation opaqueShaderDescriptor;
+	skel::shaders::ShaderDescriptorInformation unlitShaderDescriptor;
 
 // ===== Objects =====
 	Camera* cam;
@@ -163,11 +171,35 @@ private:
 		CreateRenderpass();
 
 		// Setup opaque shader uniform buffers
-		defaultShaderDescriptor.CreateDescriptorSetLayout(device->logicalDevice);
-		defaultShaderDescriptor.CreateDescriptorPool(device->logicalDevice, static_cast<uint32_t>(testObjects.size()) + 4);
+		opaqueShaderDescriptor.CreateLayoutBindingsAndPool(
+			device->logicalDevice,
+			{
+				// MVP matrices
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
+				// Lights info
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
+				// Albedo map
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2),
+				// Normal map
+				//skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3)
+			},
+			static_cast<uint32_t>(testObjects.size())
+		);
+
+		unlitShaderDescriptor.CreateLayoutBindingsAndPool(
+			device->logicalDevice,
+			{
+				// MVP matrices
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
+				// Object color
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1)
+			},
+			static_cast<uint32_t>(bulbs.size())
+		);
 
 		// Create the render pipeline
-		CreatePipelineLayout(&defaultShaderDescriptor.descriptorSetLayout);
+		CreatePipelineLayout(pipelineLayout, &opaqueShaderDescriptor.descriptorSetLayout);
+		CreatePipelineLayout(unlitPipelineLayout, &unlitShaderDescriptor.descriptorSetLayout);
 		CreateGraphicsPipeline();
 
 		// Create the depth buffer
@@ -187,13 +219,13 @@ private:
 		{
 			testObject = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Opaque);
 			testObject->AttachTexture(albedoTextureDir.c_str());
-			testObject->AttachTexture(normalTextureDir.c_str());
+			//testObject->AttachTexture(normalTextureDir.c_str());
 			testObject->AttachBuffer(sizeof(skel::MvpInfo));
 			testObject->AttachBuffer(sizeof(skel::lights::ShaderLights));
 			testObject->mvpMemory = &testObject->bufferMemories[0];
 			testObject->lightBufferMemory = &testObject->bufferMemories[1];
 
-			defaultShaderDescriptor.CreateDescriptorSets(device->logicalDevice, testObject->shader);
+			opaqueShaderDescriptor.CreateDescriptorSets(device->logicalDevice, testObject->shader);
 			testObject->transform.position.x = glm::cos(index * circleIncrement);	// Arrange in a circle
 			testObject->transform.position.y = glm::sin(index * circleIncrement);	// Arrange in a circle
 			testObject->transform.scale = glm::vec3(0.3f);							// Arrange in a circle
@@ -238,7 +270,7 @@ private:
 			object->AttachBuffer(sizeof(glm::vec3));
 			object->mvpMemory = &object->bufferMemories[0];
 			bulbColorMemory = &object->bufferMemories[1];
-			defaultShaderDescriptor.CreateDescriptorSets(device->logicalDevice, object->shader);
+			unlitShaderDescriptor.CreateDescriptorSets(device->logicalDevice, object->shader);
 			object->transform.position = finalLights.pointLights[index].position;
 			object->transform.scale *= 0.05f;
 			//glm::vec3 bulbColor = finalLights.pointLights[index].color;
@@ -270,7 +302,8 @@ private:
 		// Recreate all objects tied to the swapchain or its images
 		CreateSwapchain();
 		CreateRenderpass();
-		CreatePipelineLayout(&defaultShaderDescriptor.descriptorSetLayout);
+		CreatePipelineLayout(pipelineLayout, &opaqueShaderDescriptor.descriptorSetLayout);
+		CreatePipelineLayout(unlitPipelineLayout, &unlitShaderDescriptor.descriptorSetLayout);
 		CreateGraphicsPipeline();
 		CreateDepthResources();
 		CreateFrameBuffers();
@@ -870,6 +903,7 @@ private:
 		// Create the unlit-shadered pipeline =====
 		pipelineCreateInfo.stageCount = static_cast<uint32_t>(unlitShaderStages.size());
 		pipelineCreateInfo.pStages = unlitShaderStages.data();
+		pipelineCreateInfo.layout = unlitPipelineLayout;
 
 		if (vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1, &pipelineCreateInfo, nullptr, &unlitPipeline) != VK_SUCCESS)
 			throw std::runtime_error("Failed to create unlit pipeline");
@@ -879,14 +913,15 @@ private:
 	}
 
 	// Binds shader uniforms
-	void CreatePipelineLayout(VkDescriptorSetLayout* _layouts)
+	void CreatePipelineLayout(VkPipelineLayout& _pipelineLayout, VkDescriptorSetLayout* _shaderLayouts, uint32_t _count = 1)
 	{
 		VkPipelineLayoutCreateInfo createInfo =
 			skel::initializers::PipelineLayoutCreateInfo(
-				_layouts
+				_shaderLayouts,
+				_count
 			);
 
-		if (vkCreatePipelineLayout(device->logicalDevice, &createInfo, nullptr, &pipelineLayout) != VK_SUCCESS)
+		if (vkCreatePipelineLayout(device->logicalDevice, &createInfo, nullptr, &_pipelineLayout) != VK_SUCCESS)
 			throw std::runtime_error("Failed to create graphics pipeline layout");
 	}
 
@@ -1043,7 +1078,7 @@ private:
 			vkCmdBindPipeline(cmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, unlitPipeline);
 			for (auto& object : bulbs)
 			{
-				object->Draw(cmdBuffers[i], pipelineLayout);
+				object->Draw(cmdBuffers[i], unlitPipelineLayout);
 			}
 
 			// Complete the recording
@@ -1249,6 +1284,7 @@ private:
 		vkDestroyPipeline(device->logicalDevice, pipeline, nullptr);
 		vkDestroyPipeline(device->logicalDevice, unlitPipeline, nullptr);
 		vkDestroyPipelineLayout(device->logicalDevice, pipelineLayout, nullptr);
+		vkDestroyPipelineLayout(device->logicalDevice, unlitPipelineLayout, nullptr);
 		vkDestroyRenderPass(device->logicalDevice, renderPass, nullptr);
 
 		for (const auto& v : swapchainImageViews)
@@ -1272,7 +1308,8 @@ private:
 			delete(object);
 		}
 
-		defaultShaderDescriptor.Cleanup(device->logicalDevice);
+		opaqueShaderDescriptor.Cleanup(device->logicalDevice);
+		unlitShaderDescriptor.Cleanup(device->logicalDevice);
 
 		for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{

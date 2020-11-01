@@ -116,57 +116,40 @@ namespace skel
 		{
 			VkDescriptorSetLayout descriptorSetLayout;
 			VkDescriptorPool descriptorPool;
+			std::vector<VkDescriptorSetLayoutBinding> layoutBindings;
+			std::vector<VkDescriptorPoolSize> poolSizes;
 
-			void CreateDescriptorSetLayout(VkDevice& _device)
+			void CreateLayoutBindingsAndPool(VkDevice& _device, std::vector<VkDescriptorSetLayoutBinding> _newBindings, uint32_t _objectCount)
 			{
-				std::vector<VkDescriptorSetLayoutBinding> layoutBindings = {
-					skel::initializers::DescriptorSetLyoutBinding(	// MVP matrices
-						VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-						VK_SHADER_STAGE_VERTEX_BIT,
-						0
-					),
-					skel::initializers::DescriptorSetLyoutBinding(	// Light infos
-						VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-						VK_SHADER_STAGE_FRAGMENT_BIT,
-						1
-					),
-					skel::initializers::DescriptorSetLyoutBinding(	// Albedo map
-						VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-						VK_SHADER_STAGE_FRAGMENT_BIT,
-						2
-					),
-					skel::initializers::DescriptorSetLyoutBinding(	// Normal map
-						VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-						VK_SHADER_STAGE_FRAGMENT_BIT,
-						3
-					)
-				};
+				// Create Descriptor Set Layout
+				// ==============================
+				layoutBindings = _newBindings;
 
-				VkDescriptorSetLayoutCreateInfo createInfo = {};
-				createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-				createInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
-				createInfo.pBindings = layoutBindings.data();
+				VkDescriptorSetLayoutCreateInfo layoutCreateInfo = {};
+				layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+				layoutCreateInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
+				layoutCreateInfo.pBindings = layoutBindings.data();
 
-				if (vkCreateDescriptorSetLayout(_device, &createInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
+				if (vkCreateDescriptorSetLayout(_device, &layoutCreateInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
 					throw std::runtime_error("Failed to create a descriptor set layout");
-			}
 
-			void CreateDescriptorPool(VkDevice& _device, uint32_t _objectCount)
-			{
-				std::vector<VkDescriptorPoolSize> poolSizes = {
-					skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),			// MVP matrices
-					skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, _objectCount),			// Light
-					skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount),	// Albeto Map
-					skel::initializers::DescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, _objectCount)		// Normal Map
-				};
+				// Create Descriptor Pool
+				// ==============================
+				uint32_t bindingsCount = static_cast<uint32_t>(layoutBindings.size());
 
-				VkDescriptorPoolCreateInfo createInfo = {};
-				createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-				createInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-				createInfo.pPoolSizes = poolSizes.data();
-				createInfo.maxSets = _objectCount;
+				poolSizes.resize(bindingsCount);
+				for (uint32_t i = 0; i < bindingsCount; i++)
+				{
+					poolSizes[i] = skel::initializers::DescriptorPoolSize(layoutBindings[i].descriptorType, _objectCount);
+				}
 
-				if (vkCreateDescriptorPool(_device, &createInfo, nullptr, &descriptorPool) != VK_SUCCESS)
+				VkDescriptorPoolCreateInfo poolCreateInfo = {};
+				poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+				poolCreateInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+				poolCreateInfo.pPoolSizes = poolSizes.data();
+				poolCreateInfo.maxSets = _objectCount;
+
+				if (vkCreateDescriptorPool(_device, &poolCreateInfo, nullptr, &descriptorPool) != VK_SUCCESS)
 					throw std::runtime_error("Failed to create descriptor pool");
 			}
 

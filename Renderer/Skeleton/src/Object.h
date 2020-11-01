@@ -109,14 +109,14 @@ public:
 
 		VkDeviceMemory* memory = new VkDeviceMemory();
 		bufferMemories.push_back(*memory);
-		VkDeviceMemory& bufferMemory = bufferMemories[static_cast<uint32_t>(bufferMemories.size()) - 1];
+		//VkDeviceMemory& bufferMemory = bufferMemories[static_cast<uint32_t>(bufferMemories.size()) - 1];
 
 		device->CreateBuffer(
 			_size,
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			shaderBuffer,
-			bufferMemory
+			bufferMemories[static_cast<uint32_t>(bufferMemories.size()) - 1]
 		);
 	}
 
