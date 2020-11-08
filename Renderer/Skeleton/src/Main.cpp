@@ -41,14 +41,23 @@ private:
 	const std::string TEXTURE_DIR = ".\\res\\textures\\";
 	const std::string MODEL_DIR   = ".\\res\\models\\";
 
-	const std::string vertShaderDir = SHADER_DIR + "default_vert.spv";
-	const std::string fragShaderDir = SHADER_DIR + "default_frag.spv";
+	const std::string vertShaderDir = SHADER_DIR + "PBR_vert.spv";
+	const std::string fragShaderDir = SHADER_DIR + "PBR_frag.spv";
+	const std::string albedoTextureDir = TEXTURE_DIR + "White.png";
+	const std::string normalTextureDir = TEXTURE_DIR + "TestNormalMap.png";
+
 	const std::string unlitVertShaderDir = SHADER_DIR + "unlit_vert.spv";
 	const std::string unlitFragShaderDir = SHADER_DIR + "unlit_frag.spv";
-	const std::string albedoTextureDir = TEXTURE_DIR + "PumpkinAlbedo.png";
-	const std::string normalTextureDir = TEXTURE_DIR + "TestNormalMap.png";
-	const std::string testModelDir = MODEL_DIR + "myPumpkin.obj";
+	const std::string testTextureADir = TEXTURE_DIR + "PumpkinAlbedo.png";
+	const std::string testTextureBDir = TEXTURE_DIR + "UvTest.png";
+	const std::string testModelDir = MODEL_DIR + "SphereSmooth.obj";
 	Mesh testMesh;
+
+	struct PBRInfo {
+		float Metallic;
+		float Roughness;
+		float AO;
+	};
 
 	// The properties of the surface created by GLFW
 	struct SurfaceProperties
@@ -159,7 +168,7 @@ private:
 	// Initializes all aspects required for rendering
 	void Initialize()
 	{
-		testObjects.resize(8);
+		testObjects.resize(25);
 		bulbs.resize(4);
 
 		// Fundamental setup
@@ -178,10 +187,12 @@ private:
 				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
 				// Lights info
 				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
+				// Metallic, Roughness, & AO
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 2),
 				// Albedo map
-				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2),
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3),
 				// Normal map
-				//skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3)
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 4),
 			},
 			static_cast<uint32_t>(testObjects.size())
 		);
@@ -192,7 +203,9 @@ private:
 				// MVP matrices
 				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
 				// Object color
-				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1)
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
+				// Test texture
+				//skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2)
 			},
 			static_cast<uint32_t>(bulbs.size())
 		);
@@ -213,47 +226,89 @@ private:
 		// Setup the objects in the world
 		cam = new Camera(swapchainExtent.width / (float)swapchainExtent.height);
 
-		uint32_t index = 0;
-		float circleIncrement = (2.0f * 3.14159f) / static_cast<uint32_t>(testObjects.size());
-		for (auto& testObject : testObjects)
-		{
-			testObject = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Opaque);
-			testObject->AttachTexture(albedoTextureDir.c_str());
-			//testObject->AttachTexture(normalTextureDir.c_str());
-			testObject->AttachBuffer(sizeof(skel::MvpInfo));
-			testObject->AttachBuffer(sizeof(skel::lights::ShaderLights));
-			testObject->mvpMemory = &testObject->bufferMemories[0];
-			testObject->lightBufferMemory = &testObject->bufferMemories[1];
+		PBRInfo pbr;
+		pbr.AO = 0.1f;
 
-			opaqueShaderDescriptor.CreateDescriptorSets(device->logicalDevice, testObject->shader);
-			testObject->transform.position.x = glm::cos(index * circleIncrement);	// Arrange in a circle
-			testObject->transform.position.y = glm::sin(index * circleIncrement);	// Arrange in a circle
-			testObject->transform.scale = glm::vec3(0.3f);							// Arrange in a circle
-			//testObject->transform.rotation = {0.0f, 10.0f * index, 5.0f * index};	// Arrange in a circle
-			//testObject->transform.position.x = index;			// Arrange in a line
-			//testObject->transform.scale = glm::vec3(0.5f);	// Arrange in a line
-			index++;
+		for (int x = 0; x < 5; x++)
+		{
+			for (int y = 0; y < 5; y++)
+			{
+				uint32_t objectIndex = 5 * x + y;
+				testObjects[objectIndex] = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Opaque);
+				Object*& testObject = testObjects[objectIndex];
+
+				testObject->AttachTexture(albedoTextureDir.c_str());
+				testObject->AttachTexture(normalTextureDir.c_str());
+				testObject->AttachBuffer(sizeof(skel::MvpInfo));
+				testObject->AttachBuffer(sizeof(skel::lights::ShaderLights));
+				testObject->AttachBuffer(sizeof(PBRInfo));
+				testObject->mvpMemory = &testObject->bufferMemories[0];
+				testObject->lightBufferMemory = &testObject->bufferMemories[1];
+
+				pbr.Metallic = (x / 4.0f);
+				pbr.Roughness = (y / 4.0f);
+				if (pbr.Roughness == 0)
+					pbr.Roughness = 0.1f;
+				device->CopyDataToBufferMemory(&pbr, sizeof(PBRInfo), testObject->bufferMemories[2]);
+
+				opaqueShaderDescriptor.CreateDescriptorSets(device->logicalDevice, testObject->shader);
+				testObject->transform.position.x = float(x - 2);
+				testObject->transform.position.y = float(-y + 2);
+				testObject->transform.scale *= 0.5f;
+			}
 		}
 
+		uint32_t index = 0;
+		//float circleIncrement = (2.0f * 3.14159f) / static_cast<uint32_t>(testObjects.size());
+		//for (auto& testObject : testObjects)
+		//{
+		//	testObject = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Opaque);
+		//	testObject->AttachTexture(albedoTextureDir.c_str());
+		//	testObject->AttachTexture(normalTextureDir.c_str());
+		//	testObject->AttachBuffer(sizeof(skel::MvpInfo));
+		//	testObject->AttachBuffer(sizeof(skel::lights::ShaderLights));
+		//	testObject->AttachBuffer(sizeof(PBRInfo));
+		//	testObject->mvpMemory = &testObject->bufferMemories[0];
+		//	testObject->lightBufferMemory = &testObject->bufferMemories[1];
+
+		//	device->CopyDataToBufferMemory(&pbr, sizeof(PBRInfo), testObject->bufferMemories[2]);
+
+		//	opaqueShaderDescriptor.CreateDescriptorSets(device->logicalDevice, testObject->shader);
+		//	testObject->transform.position.x = glm::cos(index * circleIncrement);	// Arrange in a circle
+		//	testObject->transform.position.y = glm::sin(index * circleIncrement);	// Arrange in a circle
+		//	testObject->transform.scale = glm::vec3(0.3f);							// Arrange in a circle
+		//	//testObject->transform.rotation = {0.0f, 10.0f * index, 5.0f * index};	// Arrange in a circle
+		//	//testObject->transform.position.x = index;			// Arrange in a line
+		//	//testObject->transform.scale = glm::vec3(0.5f);	// Arrange in a line
+		//	index++;
+		//}
+
 		// Define lighting
+		// Directional light
+		finalLights.directionalLight.color = {1.0f, 0.0f, 0.0f};
+		finalLights.directionalLight.direction = {0.0f, 0.0f, 1.0f};
 		// Point lights
 		finalLights.pointLights[0].color = { 1.0f, 1.0f, 1.0f };
+		finalLights.pointLights[0].color *= 3.0f;
 		finalLights.pointLights[0].position = { 1.0f, 1.0f, 2.0f };
 		finalLights.pointLights[0].CLQ = { 1.0f, 0.35f, 0.44f };
-		finalLights.pointLights[1].color = { 1.0f, 0.0f, 0.0f };
+		finalLights.pointLights[1].color = { 1.0f, 1.0f, 1.0f };
+		finalLights.pointLights[1].color *= 3.0f;
 		finalLights.pointLights[1].position = { -1.0f, 1.0f, 2.0f };
 		finalLights.pointLights[1].CLQ = { 1.0f, 0.35f, 0.44f };
-		finalLights.pointLights[2].color = { 0.0f, 1.0f, 0.0f };
+		finalLights.pointLights[2].color = { 1.0f, 1.0f, 1.0f };
+		finalLights.pointLights[2].color *= 3.0f;
 		finalLights.pointLights[2].position = { -1.0f, -1.0f, 2.0f };
 		finalLights.pointLights[2].CLQ = { 1.0f, 0.35f, 0.44f };
-		finalLights.pointLights[3].color = { 0.0f, 0.0f, 1.0f };
+		finalLights.pointLights[3].color = { 1.0f, 1.0f, 1.0f };
+		finalLights.pointLights[3].color *= 3.0f;
 		finalLights.pointLights[3].position = { 1.0f, -1.0f, 2.0f };
 		finalLights.pointLights[3].CLQ = { 1.0f, 0.35f, 0.44f };
-		// Spotlights
+		// Spot lights
 		finalLights.spotLights[0].color = { 1.0f, 0.2f, 0.1f };
 		finalLights.spotLights[0].CLQ = { 1.0f, 0.35f, 0.44f };
 		finalLights.spotLights[0].cutOff = glm::cos(glm::radians(2.0f));
-		finalLights.spotLights[1].color = { 0.1f, 0.1f, 1.0f };
+		finalLights.spotLights[1].color = { 0.1f, 1.0f, 0.1f };
 		finalLights.spotLights[1].CLQ = { 1.0f, 0.35f, 0.44f };
 		finalLights.spotLights[1].cutOff = glm::cos(glm::radians(2.0f));
 
@@ -268,6 +323,7 @@ private:
 			object = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Unlit);
 			object->AttachBuffer(sizeof(skel::MvpInfo));
 			object->AttachBuffer(sizeof(glm::vec3));
+			//object->AttachTexture((index %2 == 1) ? testTextureADir.c_str() : testTextureBDir.c_str());
 			object->mvpMemory = &object->bufferMemories[0];
 			bulbColorMemory = &object->bufferMemories[1];
 			unlitShaderDescriptor.CreateDescriptorSets(device->logicalDevice, object->shader);
@@ -828,8 +884,23 @@ private:
 	// Defines the shader's expected uniform bindings
 	// Moved to Initialization
 
-	// ===== Shader Stage =====
-	// Opaque =====
+	// ===== Pipeline Creation =====
+		VkGraphicsPipelineCreateInfo pipelineCreateInfo = 
+			skel::initializers::GraphicsPipelineCreateInfo(
+				pipelineLayout,
+				renderPass
+			);
+
+		pipelineCreateInfo.pViewportState		= &viewportState;
+		pipelineCreateInfo.pVertexInputState	= &vertInputState;
+		pipelineCreateInfo.pInputAssemblyState	= &inputAssemblyState;
+		pipelineCreateInfo.pRasterizationState	= &rasterizationState;
+		pipelineCreateInfo.pMultisampleState	= &mutisampleState;
+		pipelineCreateInfo.pDepthStencilState	= &depthStencilState;
+		pipelineCreateInfo.pColorBlendState		= &colorBlendState;
+		pipelineCreateInfo.pDynamicState		= &dynamicState;
+
+		// Opaque =====
 		std::vector<char> vertFile = LoadFile(vertShaderDir.c_str());
 		std::vector<char> fragFile = LoadFile(fragShaderDir.c_str());
 		VkShaderModule vertShaderModule = CreateShaderModule(vertFile);
@@ -851,7 +922,17 @@ private:
 			fragShaderStageInfo
 		};
 
-	// Unlit =====
+		// Create the opaque-shadered pipeline =====
+		pipelineCreateInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
+		pipelineCreateInfo.pStages = shaderStages.data();
+
+		if (vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline) != VK_SUCCESS)
+			throw std::runtime_error("Failed to create opaque pipeline");
+
+		vkDestroyShaderModule(device->logicalDevice, vertShaderModule, nullptr);
+		vkDestroyShaderModule(device->logicalDevice, fragShaderModule, nullptr);
+
+		// Unlit =====
 		std::vector<char> unlitVertFile = LoadFile(unlitVertShaderDir.c_str());
 		std::vector<char> unlitFragFile = LoadFile(unlitFragShaderDir.c_str());
 		VkShaderModule unlitVertShaderModule = CreateShaderModule(unlitVertFile);
@@ -872,33 +953,6 @@ private:
 			unlitVertShaderStageInfo,
 			unlitFragShaderStageInfo
 		};
-
-	// ===== Pipeline Creation =====
-		VkGraphicsPipelineCreateInfo pipelineCreateInfo = 
-			skel::initializers::GraphicsPipelineCreateInfo(
-				pipelineLayout,
-				renderPass
-			);
-
-		pipelineCreateInfo.pViewportState		= &viewportState;
-		pipelineCreateInfo.pVertexInputState	= &vertInputState;
-		pipelineCreateInfo.pInputAssemblyState	= &inputAssemblyState;
-		pipelineCreateInfo.pRasterizationState	= &rasterizationState;
-		pipelineCreateInfo.pMultisampleState	= &mutisampleState;
-		pipelineCreateInfo.pDepthStencilState	= &depthStencilState;
-		pipelineCreateInfo.pColorBlendState		= &colorBlendState;
-		pipelineCreateInfo.pDynamicState		= &dynamicState;
-
-
-		// Create the opaque-shadered pipeline =====
-		pipelineCreateInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
-		pipelineCreateInfo.pStages = shaderStages.data();
-
-		if (vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline) != VK_SUCCESS)
-			throw std::runtime_error("Failed to create opaque pipeline");
-
-		vkDestroyShaderModule(device->logicalDevice, vertShaderModule, nullptr);
-		vkDestroyShaderModule(device->logicalDevice, fragShaderModule, nullptr);
 
 		// Create the unlit-shadered pipeline =====
 		pipelineCreateInfo.stageCount = static_cast<uint32_t>(unlitShaderStages.size());
@@ -1151,6 +1205,8 @@ private:
 		float camSpeed = 1.0f;
 		if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
 			camSpeed = 2.0f;
+		if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
+			camSpeed = 0.3f;
 		if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
 			cam->cameraPosition += cam->cameraFront * camSpeed * time.deltaTime;
 		if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
@@ -1254,7 +1310,7 @@ private:
 			//testObject->transform.rotation.y = glm::sin(time.totalTime) * 30.0f;
 			//testObject->transform.rotation.z = glm::cos(time.totalTime) * 30.0f;
 
-			testObject->transform.position.z = glm::cos(time.totalTime);
+			//testObject->transform.position.z = glm::cos(time.totalTime);
 			testObject->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
 			device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), *testObject->lightBufferMemory);
 		}

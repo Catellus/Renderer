@@ -8,16 +8,17 @@ An educational playground to figure out Vulkan, 3D graphics, and various renderi
 - Models and textures
 - Normal mapping
 - Phong shading
+- PBR shading
 
 ## Queued
-- PBR shading
+- IBL
 - Shadowmapping
 - Deferred shading
 - SSAO
 - Ray tracing
 - Better modularity
 ---
-![](HolidyExample.PNG)
+![](PBR.PNG)
 ---
 ### Miscellaneous things I plan to learn & implement
 - Mimicking real-world cameras

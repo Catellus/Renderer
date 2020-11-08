@@ -27,12 +27,18 @@ struct SpotLightInfo
 // TODO : https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object
 layout(set = 0, binding = 1) uniform LightInfos
 {
-//	DirectionalLightInfo directionalLight;
+	DirectionalLightInfo directionalLight;
 	PointLightInfo pointLights[4];
 	SpotLightInfo spotlights[2];
 }lights;
-layout(set = 0, binding = 2) uniform sampler2D AlbedoSampler;
-layout(set = 0, binding = 3) uniform sampler2D NormalSampler;
+layout(set = 0, binding = 2) uniform PBRValuesInfo
+{
+	float metallic;
+	float roughness;
+	float ao;
+}PBRValues;
+layout(set = 0, binding = 3) uniform sampler2D AlbedoSampler;
+layout(set = 0, binding = 4) uniform sampler2D NormalSampler;
 
 layout(location = 0) in vec3 inPos;			// fragment position in world-space
 layout(location = 1) in vec3 inNormal;		// fragment normal in model space
@@ -41,73 +47,7 @@ layout(location = 3) in vec3 inCamPos;		// camera position in world-space
 
 layout(location = 0) out vec4 outColor;
 
-//vec3 CalculateDirectionalLightContribution(DirectionalLightInfo li, vec3 N, vec3 V)
-//{
-//	vec3 L = normalize(-li.direction);
-//	vec3 R = reflect(-L, N);
-//
-//	float ambientStrength = 0.01;
-//	vec3 ambient = li.color * ambientStrength;
-//
-//	float diffuseStrength = max(dot(N, L), 0.0);
-//	vec3 diffuse = li.color * diffuseStrength;
-//
-//	float specularStrength = 0.5;
-//	float specularity = pow(max(dot(V, R), 0.0), 32);
-//	vec3 specular = li.color * specularity * specularStrength;
-//
-//	return (ambient + diffuse + specular) * li.color;
-//}
-
-vec3 CalculatePointLightContribution(PointLightInfo li, vec3 N, vec3 V)
-{
-	vec3 L = normalize(li.position - inPos);
-	vec3 R = reflect(-L, N);
-
-	float ambientStrength = 0.01;
-	vec3 ambient = li.color * ambientStrength;
-
-	float diffuseStrength = max(dot(N, L), 0.0);
-	vec3 diffuse = li.color * diffuseStrength;
-
-	float specularStrength = 0.5;
-	float specularity = pow(max(dot(V, R), 0.0), 32);
-	vec3 specular = li.color * specularity * specularStrength;
-
-	float lightDist = length(li.position - inPos);
-	float attenuation = 1.0 / (li.conLinQua.x + li.conLinQua.y * lightDist + li.conLinQua.z * lightDist * lightDist);
-
-	return (ambient + diffuse + specular) * attenuation * li.color;
-}
-
-vec3 CalculateSpotlightContribution(SpotLightInfo li, vec3 N, vec3 V)
-{
-	vec3 L = normalize(li.position - inPos);
-	vec3 R = reflect(-L, N);
-
-	float ambientStrength = 0.01;
-	vec3 ambient = li.color * ambientStrength;
-
-	float theta = dot(L, normalize(-li.direction));
-	if (theta > li.outerCutOff)
-	{
-		float diffuseStrength = max(dot(N, L), 0.0);
-		vec3 diffuse = li.color * diffuseStrength;
-
-		float specularStrength = 0.5;
-		float specularity = pow(max(dot(V, R), 0.0), 32);
-		vec3 specular = li.color * specularity * specularStrength;
-
-		float lightDist = length(li.position - inPos);
-		float attenuation = 1.0 / (li.conLinQua.x + li.conLinQua.y * lightDist + li.conLinQua.z * lightDist * lightDist);
-
-		float epsilon   = li.cutOff - li.outerCutOff;
-		float coneFalloff = clamp((theta - li.outerCutOff) / epsilon, 0.0, 1.0);
-
-		return (ambient + ((diffuse + specular) * coneFalloff * attenuation)) * li.color;
-	}
-	return ambient;
-}
+const float PI = 3.1415926535;
 
 vec3 TransformNormalMapToModel()
 {
@@ -126,30 +66,95 @@ vec3 TransformNormalMapToModel()
 	return normalize(TBN * tangetNormal);
 }
 
+float CalculateAttenuation(vec3 conLinQua, float lightDist)
+{
+	return 1.0 / (conLinQua.x + conLinQua.y * lightDist + conLinQua.z * lightDist * lightDist);
+}
+
+vec3 FresnelSchlick(float cosTheta, vec3 F0)
+{
+	return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
+float DistributionGGX(vec3 N, vec3 H, float roughness)
+{
+	float a = roughness * roughness;
+	float a2 = a * a;
+	float NdotH = max(dot(N, H), 0.0);
+	float NdotH2 = NdotH * NdotH;
+
+	float num = a2;
+	float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+	denom = PI * denom * denom;
+
+	return num/denom;
+}
+
+float GeometrySchlickGGX(float NdotV , float roughness)
+{
+	float r = (roughness + 1.0);
+	float k = (r * r) / 8.0;
+
+	float num = NdotV;
+	float denom = NdotV * (1.0 - k) + k;
+
+	return num / denom;
+}
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
+{
+	float NdotV = max(dot(N, V), 0.0);
+	float NdotL = max(dot(N, L), 0.0);
+	float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+	float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+	return ggx1 * ggx2;
+}
+
 void main()
 {
 	vec3 objectColor= texture(AlbedoSampler, inTexCoord).xyz;
 	vec3 finalLight = vec3(0.0);
 	vec3 final = vec3(0.0);
 
-// TODO : http://www.lighthouse3d.com/tutorials/glsl-12-tutorial/the-normal-matrix/
-	
-	vec3 N = TransformNormalMapToModel();
+	//vec3 N = TransformNormalMapToModel();
+	vec3 N = normalize(inNormal);
 	vec3 V = normalize(inCamPos - inPos);
 
-//	finalLight += CalculateDirectionalLightContribution(lights.directionalLight, N, V);
+	vec3 F0 = vec3(0.04);
+	F0 = mix(F0, objectColor, PBRValues.metallic);
 
+	vec3 Lo = vec3(0.0);
 	for (int i = 0; i < 4; i++)
 	{
-		finalLight += CalculatePointLightContribution(lights.pointLights[i], N, V);
+		vec3 L = normalize(lights.pointLights[i].position - inPos);
+		vec3 H = normalize(V + L);
+
+		float dist = length(lights.pointLights[i].position - inPos);
+		float attenuation = 1.0 / (dist * dist);
+		vec3 radiance = lights.pointLights[i].color * attenuation;
+
+		float NDF = DistributionGGX(N, H, PBRValues.roughness);
+		float G = GeometrySmith(N, V, L, PBRValues.roughness);
+		vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+		vec3 kS = F;
+		vec3 kD = vec3(1.0) - kS;
+		kD *= 1.0 - PBRValues.metallic;
+
+		vec3 numerator = NDF * G * F;
+		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0);
+		vec3 specular = numerator / max(denominator, 0.001);
+
+		float NdotL = max(dot(N, L), 0.0);
+		Lo += (kD * objectColor / PI + specular) * radiance * NdotL;
 	}
 
-	for (int i = 0; i < 2; i++)
-	{
-		finalLight += CalculateSpotlightContribution(lights.spotlights[i], N, V);
-	}
+	vec3 ambient = vec3(0.03) * objectColor * PBRValues.ao;
+	vec3 color = ambient + Lo;
 
-	final = objectColor * finalLight;
+	//final = objectColor * finalLight;
+	final = color;
 	outColor = vec4(final, 1.0);
 }
 

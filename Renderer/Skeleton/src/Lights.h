@@ -36,7 +36,7 @@ namespace skel
 		// Used as a shader uniform
 		struct ShaderLights
 		{
-			//DirectionalLight directionalLight;
+			DirectionalLight directionalLight;
 			PointLight pointLights[4];
 			SpotLight spotLights[2];
 		};
