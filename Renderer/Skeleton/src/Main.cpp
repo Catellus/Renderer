@@ -43,8 +43,11 @@ private:
 
 	const std::string vertShaderDir = SHADER_DIR + "PBR_vert.spv";
 	const std::string fragShaderDir = SHADER_DIR + "PBR_frag.spv";
-	const std::string albedoTextureDir = TEXTURE_DIR + "White.png";
-	const std::string normalTextureDir = TEXTURE_DIR + "TestNormalMap.png";
+	const std::string albedoTextureDir    = TEXTURE_DIR + "DecorativeTile\\Tiles_Decorative_albedo.png";
+	const std::string normalTextureDir    = TEXTURE_DIR + "DecorativeTile\\Tiles_Decorative_normal.png";
+	const std::string metallicTextureDir  = TEXTURE_DIR + "DecorativeTile\\Tiles_Decorative_metallic.png";
+	const std::string roughnessTextureDir = TEXTURE_DIR + "DecorativeTile\\Tiles_Decorative_roughness.png";
+	const std::string aoTextureDir        = TEXTURE_DIR + "DecorativeTile\\Tiles_Decorative_ao.png";
 
 	const std::string unlitVertShaderDir = SHADER_DIR + "unlit_vert.spv";
 	const std::string unlitFragShaderDir = SHADER_DIR + "unlit_frag.spv";
@@ -52,12 +55,6 @@ private:
 	const std::string testTextureBDir = TEXTURE_DIR + "UvTest.png";
 	const std::string testModelDir = MODEL_DIR + "SphereSmooth.obj";
 	Mesh testMesh;
-
-	struct PBRInfo {
-		float Metallic;
-		float Roughness;
-		float AO;
-	};
 
 	// The properties of the surface created by GLFW
 	struct SurfaceProperties
@@ -168,7 +165,7 @@ private:
 	// Initializes all aspects required for rendering
 	void Initialize()
 	{
-		testObjects.resize(25);
+		testObjects.resize(1);
 		bulbs.resize(4);
 
 		// Fundamental setup
@@ -187,12 +184,16 @@ private:
 				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
 				// Lights info
 				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
-				// Metallic, Roughness, & AO
-				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 2),
 				// Albedo map
-				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3),
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2),
 				// Normal map
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3),
+				// Metallic
 				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 4),
+				// Roughness
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 5),
+				// AO
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 6),
 			},
 			static_cast<uint32_t>(testObjects.size())
 		);
@@ -226,12 +227,9 @@ private:
 		// Setup the objects in the world
 		cam = new Camera(swapchainExtent.width / (float)swapchainExtent.height);
 
-		PBRInfo pbr;
-		pbr.AO = 0.1f;
-
-		for (int x = 0; x < 5; x++)
+		for (int x = 0; x < 1; x++)
 		{
-			for (int y = 0; y < 5; y++)
+			for (int y = 0; y < 1; y++)
 			{
 				uint32_t objectIndex = 5 * x + y;
 				testObjects[objectIndex] = new Object(device, testModelDir.c_str(), skel::shaders::ShaderTypes::Opaque);
@@ -239,22 +237,21 @@ private:
 
 				testObject->AttachTexture(albedoTextureDir.c_str());
 				testObject->AttachTexture(normalTextureDir.c_str());
+				testObject->AttachTexture(metallicTextureDir.c_str());
+				testObject->AttachTexture(roughnessTextureDir.c_str());
+				testObject->AttachTexture(albedoTextureDir.c_str());
 				testObject->AttachBuffer(sizeof(skel::MvpInfo));
 				testObject->AttachBuffer(sizeof(skel::lights::ShaderLights));
-				testObject->AttachBuffer(sizeof(PBRInfo));
 				testObject->mvpMemory = &testObject->bufferMemories[0];
 				testObject->lightBufferMemory = &testObject->bufferMemories[1];
 
-				pbr.Metallic = (x / 4.0f);
-				pbr.Roughness = (y / 4.0f);
-				if (pbr.Roughness == 0)
-					pbr.Roughness = 0.1f;
-				device->CopyDataToBufferMemory(&pbr, sizeof(PBRInfo), testObject->bufferMemories[2]);
-
 				opaqueShaderDescriptor.CreateDescriptorSets(device->logicalDevice, testObject->shader);
-				testObject->transform.position.x = float(x - 2);
-				testObject->transform.position.y = float(-y + 2);
-				testObject->transform.scale *= 0.5f;
+				//testObject->transform.position.x = float(x - 2);
+				//testObject->transform.position.y = float(-y + 2);
+				//testObject->transform.rotation.x = -25.0f;
+				testObject->transform.rotation.y = 45.0f;
+				testObject->transform.rotation.x = 30.0f;
+				//testObject->transform.scale *= 0.5f;
 			}
 		}
 
@@ -285,23 +282,19 @@ private:
 
 		// Define lighting
 		// Directional light
-		finalLights.directionalLight.color = {1.0f, 0.0f, 0.0f};
-		finalLights.directionalLight.direction = {0.0f, 0.0f, 1.0f};
+		finalLights.directionalLight.color = {5.0f, 5.0f, 5.0f};
+		finalLights.directionalLight.direction = {0.0f, -1.0f, 0.1f};
 		// Point lights
-		finalLights.pointLights[0].color = { 1.0f, 1.0f, 1.0f };
-		finalLights.pointLights[0].color *= 3.0f;
+		finalLights.pointLights[0].color = { 3.0f, 1.0f, 3.0f };
 		finalLights.pointLights[0].position = { 1.0f, 1.0f, 2.0f };
 		finalLights.pointLights[0].CLQ = { 1.0f, 0.35f, 0.44f };
-		finalLights.pointLights[1].color = { 1.0f, 1.0f, 1.0f };
-		finalLights.pointLights[1].color *= 3.0f;
+		finalLights.pointLights[1].color = { 1.0f, 3.0f, 3.0f };
 		finalLights.pointLights[1].position = { -1.0f, 1.0f, 2.0f };
 		finalLights.pointLights[1].CLQ = { 1.0f, 0.35f, 0.44f };
-		finalLights.pointLights[2].color = { 1.0f, 1.0f, 1.0f };
-		finalLights.pointLights[2].color *= 3.0f;
+		finalLights.pointLights[2].color = { 1.0f, 3.0f, 3.0f };
 		finalLights.pointLights[2].position = { -1.0f, -1.0f, 2.0f };
 		finalLights.pointLights[2].CLQ = { 1.0f, 0.35f, 0.44f };
-		finalLights.pointLights[3].color = { 1.0f, 1.0f, 1.0f };
-		finalLights.pointLights[3].color *= 3.0f;
+		finalLights.pointLights[3].color = { 3.0f, 1.0f, 3.0f };
 		finalLights.pointLights[3].position = { 1.0f, -1.0f, 2.0f };
 		finalLights.pointLights[3].CLQ = { 1.0f, 0.35f, 0.44f };
 		// Spot lights
@@ -329,7 +322,6 @@ private:
 			unlitShaderDescriptor.CreateDescriptorSets(device->logicalDevice, object->shader);
 			object->transform.position = finalLights.pointLights[index].position;
 			object->transform.scale *= 0.05f;
-			//glm::vec3 bulbColor = finalLights.pointLights[index].color;
 			device->CopyDataToBufferMemory(&finalLights.pointLights[index].color, sizeof(glm::vec3), *bulbColorMemory);
 
 			index++;
@@ -494,7 +486,7 @@ private:
 
 		for (const auto& d : _devices)
 		{
-			// Check for the presense of all required extensions
+			// Check for the presence of all required extensions
 			std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
 			vkEnumerateDeviceExtensionProperties(d, nullptr, &supportedExtensionsCount, nullptr);
 			supportedExtensions.resize(supportedExtensionsCount);
@@ -507,7 +499,7 @@ private:
 				requiredExtensions.erase(e.extensionName);
 			}
 
-			// Find required queue familiy indices
+			// Find required queue family indices
 			vkGetPhysicalDeviceQueueFamilyProperties(d, &qPropCount, nullptr);
 			qProps.resize(qPropCount);
 			vkGetPhysicalDeviceQueueFamilyProperties(d, &qPropCount, qProps.data());
@@ -676,7 +668,8 @@ private:
 		_format = _properties.formats[0];
 		for (const auto& f : _properties.formats)
 		{
-			if (f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR && f.format == VK_FORMAT_B8G8R8A8_SRGB)
+			//if (f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR && f.format == VK_FORMAT_B8G8R8A8_SRGB)
+			if (f.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT && f.format == VK_FORMAT_B8G8R8A8_UNORM)
 			{
 				_format = f;
 				break;
@@ -1307,8 +1300,9 @@ private:
 		for (auto& testObject : testObjects)
 		{
 			//testObject->transform.position.x = glm::sin(time.totalTime);
-			//testObject->transform.rotation.y = glm::sin(time.totalTime) * 30.0f;
-			//testObject->transform.rotation.z = glm::cos(time.totalTime) * 30.0f;
+			//testObject->transform.rotation.y = glm::sin(time.totalTime) * 45.0f;
+			//testObject->transform.rotation.z = glm::cos(time.totalTime * 2.0f) * 30.0f;
+			testObject->transform.rotation.y = time.totalTime * 15.0f;
 
 			//testObject->transform.position.z = glm::cos(time.totalTime);
 			testObject->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);

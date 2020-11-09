@@ -31,14 +31,11 @@ layout(set = 0, binding = 1) uniform LightInfos
 	PointLightInfo pointLights[4];
 	SpotLightInfo spotlights[2];
 }lights;
-layout(set = 0, binding = 2) uniform PBRValuesInfo
-{
-	float metallic;
-	float roughness;
-	float ao;
-}PBRValues;
-layout(set = 0, binding = 3) uniform sampler2D AlbedoSampler;
-layout(set = 0, binding = 4) uniform sampler2D NormalSampler;
+layout(set = 0, binding = 2) uniform sampler2D AlbedoSampler;
+layout(set = 0, binding = 3) uniform sampler2D NormalSampler;
+layout(set = 0, binding = 4) uniform sampler2D MetallicSampler;
+layout(set = 0, binding = 5) uniform sampler2D RoughnessSampler;
+layout(set = 0, binding = 6) uniform sampler2D AOSampler;
 
 layout(location = 0) in vec3 inPos;			// fragment position in world-space
 layout(location = 1) in vec3 inNormal;		// fragment normal in model space
@@ -59,7 +56,7 @@ vec3 TransformNormalMapToModel()
 	vec2 st2 = dFdy(inTexCoord);
 
 	vec3 N = normalize(inNormal);
-	vec3 T = normalize(q1 * st2.y - q2 * st1.y);
+	vec3 T = normalize(q1 * st2.x - q2 * st1.x);
 	vec3 B = normalize(cross(N, T));
 	mat3 TBN = mat3(T, B, N);
 
@@ -111,50 +108,61 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 	return ggx1 * ggx2;
 }
 
+vec3 CalculatePBRLighting(vec3 N, vec3 V, vec3 L, vec3 H, vec3 F0, vec3 albedo, float metallic, float roughness)
+{
+	float NDF = DistributionGGX(N, H, roughness);
+	float G = GeometrySmith(N, V, L, roughness);
+	vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+	vec3 kS = F;
+	vec3 kD = vec3(1.0) - kS;
+	kD *= 1.0 - metallic;
+
+	vec3 numerator = NDF * G * F;
+	float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0);
+	vec3 specular = numerator / max(denominator, 0.001);
+
+	float NdotL = max(dot(N, L), 0.0);
+	return (kD * albedo / PI + specular) * NdotL;
+}
+
 void main()
 {
-	vec3 objectColor= texture(AlbedoSampler, inTexCoord).xyz;
+	vec3 albedo= texture(AlbedoSampler, inTexCoord).xyz;
 	vec3 finalLight = vec3(0.0);
 	vec3 final = vec3(0.0);
 
-	//vec3 N = TransformNormalMapToModel();
-	vec3 N = normalize(inNormal);
+	float metallic = texture(MetallicSampler, inTexCoord).r;
+	float roughness = texture(RoughnessSampler, inTexCoord).r;
+	float ao = texture(AOSampler, inTexCoord).r;
+
+	vec3 N = TransformNormalMapToModel();
 	vec3 V = normalize(inCamPos - inPos);
 
 	vec3 F0 = vec3(0.04);
-	F0 = mix(F0, objectColor, PBRValues.metallic);
+	F0 = mix(F0, albedo, metallic);
 
-	vec3 Lo = vec3(0.0);
+	// Directional Light
+	vec3 L = normalize(-lights.directionalLight.direction);
+	vec3 H = normalize(V + L);
+	finalLight += CalculatePBRLighting(N, V, L, H, F0, albedo, metallic, roughness) * lights.directionalLight.color;
+
+	// Point Lights
 	for (int i = 0; i < 4; i++)
 	{
-		vec3 L = normalize(lights.pointLights[i].position - inPos);
-		vec3 H = normalize(V + L);
+		L = normalize(lights.pointLights[i].position - inPos);
+		H = normalize(V + L);
 
 		float dist = length(lights.pointLights[i].position - inPos);
 		float attenuation = 1.0 / (dist * dist);
 		vec3 radiance = lights.pointLights[i].color * attenuation;
 
-		float NDF = DistributionGGX(N, H, PBRValues.roughness);
-		float G = GeometrySmith(N, V, L, PBRValues.roughness);
-		vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
-
-		vec3 kS = F;
-		vec3 kD = vec3(1.0) - kS;
-		kD *= 1.0 - PBRValues.metallic;
-
-		vec3 numerator = NDF * G * F;
-		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0);
-		vec3 specular = numerator / max(denominator, 0.001);
-
-		float NdotL = max(dot(N, L), 0.0);
-		Lo += (kD * objectColor / PI + specular) * radiance * NdotL;
+		finalLight += radiance * CalculatePBRLighting(N, V, L, H, F0, albedo, metallic, roughness) * lights.pointLights[i].color;
 	}
 
-	vec3 ambient = vec3(0.03) * objectColor * PBRValues.ao;
-	vec3 color = ambient + Lo;
+	vec3 ambient = vec3(0.05) * albedo * ao;
 
-	//final = objectColor * finalLight;
-	final = color;
+	final = ambient + finalLight;
 	outColor = vec4(final, 1.0);
 }
 

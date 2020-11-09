@@ -101,7 +101,8 @@ namespace skel
 
 	void CreateTextureImageView(VulkanDevice* _device, VkImage& _image, VkImageView& _imageView)
 	{
-		_imageView = CreateImageView(_device, _image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+		//_imageView = CreateImageView(_device, _image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+		_imageView = CreateImageView(_device, _image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 	}
 
 	// Defines and executes a command to copy the buffer to the image
@@ -201,7 +202,8 @@ namespace skel
 			_device,
 			(uint32_t)textureWidth,
 			(uint32_t)textureHeight,
-			VK_FORMAT_R8G8B8A8_SRGB,
+			//VK_FORMAT_R8G8B8A8_SRGB,
+			VK_FORMAT_R8G8B8A8_UNORM,
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -209,9 +211,11 @@ namespace skel
 			_imageMemory
 		);
 
-		TransitionImageLayout(_device, _image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		//TransitionImageLayout(_device, _image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		TransitionImageLayout(_device, _image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 		CopyBufferToImage(_device, stagingBuffer, _image, (uint32_t)textureWidth, (uint32_t)textureHeight);
-		TransitionImageLayout(_device, _image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		//TransitionImageLayout(_device, _image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		TransitionImageLayout(_device, _image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		vkDestroyBuffer(_device->logicalDevice, stagingBuffer, nullptr);
 		vkFreeMemory(_device->logicalDevice, stagingBufferMemory, nullptr);

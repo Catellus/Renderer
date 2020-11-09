@@ -14,7 +14,7 @@ layout(location = 0) out vec4 outColor;
 
 void main()
 {
-	vec3 objectColor = properties.color;// * texture(testTexture, inTexCoord).xyz;
+	vec3 objectColor = normalize(properties.color);
 	outColor = vec4((objectColor), 1.0);
 }
 
