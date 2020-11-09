@@ -145,7 +145,8 @@ void main()
 	// Directional Light
 	vec3 L = normalize(-lights.directionalLight.direction);
 	vec3 H = normalize(V + L);
-	finalLight += CalculatePBRLighting(N, V, L, H, F0, albedo, metallic, roughness) * lights.directionalLight.color;
+	vec3 radiance = lights.directionalLight.color;
+	finalLight += CalculatePBRLighting(N, V, L, H, F0, albedo, metallic, roughness) * radiance;
 
 	// Point Lights
 	for (int i = 0; i < 4; i++)
@@ -157,7 +158,28 @@ void main()
 		float attenuation = 1.0 / (dist * dist);
 		vec3 radiance = lights.pointLights[i].color * attenuation;
 
-		finalLight += radiance * CalculatePBRLighting(N, V, L, H, F0, albedo, metallic, roughness) * lights.pointLights[i].color;
+		finalLight += CalculatePBRLighting(N, V, L, H, F0, albedo, metallic, roughness) * radiance;
+	}
+
+	// Spot Lights
+	for (int i = 0; i < 2; i++)
+	{
+		L = normalize(lights.spotlights[i].position - inPos);
+		H = normalize(V + L);
+
+		float theta = dot(L, normalize(-lights.spotlights[i].direction));
+		if (theta > lights.spotlights[i].outerCutOff)
+		{
+			float dist = length(lights.spotlights[i].position - inPos);
+			float attenuation = 1.0 / (dist * dist);
+
+			float epsilon = lights.spotlights[i].cutOff - lights.spotlights[i].outerCutOff;
+			float coneFalloff = clamp((theta - lights.spotlights[i].outerCutOff) / epsilon, 0.0, 1.0);
+
+			vec3 radiance = lights.spotlights[i].color * attenuation * coneFalloff;
+
+			finalLight += CalculatePBRLighting(N, V, L, H, F0, albedo, metallic, roughness) * radiance;
+		}
 	}
 
 	vec3 ambient = vec3(0.05) * albedo * ao;

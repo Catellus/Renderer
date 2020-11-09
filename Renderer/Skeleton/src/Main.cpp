@@ -298,10 +298,10 @@ private:
 		finalLights.pointLights[3].position = { 1.0f, -1.0f, 2.0f };
 		finalLights.pointLights[3].CLQ = { 1.0f, 0.35f, 0.44f };
 		// Spot lights
-		finalLights.spotLights[0].color = { 1.0f, 0.2f, 0.1f };
+		finalLights.spotLights[0].color = { 3.0f, 0.0f, 0.0f };
 		finalLights.spotLights[0].CLQ = { 1.0f, 0.35f, 0.44f };
 		finalLights.spotLights[0].cutOff = glm::cos(glm::radians(2.0f));
-		finalLights.spotLights[1].color = { 0.1f, 1.0f, 0.1f };
+		finalLights.spotLights[1].color = { 0.0f, 3.0f, 0.0f };
 		finalLights.spotLights[1].CLQ = { 1.0f, 0.35f, 0.44f };
 		finalLights.spotLights[1].cutOff = glm::cos(glm::radians(2.0f));
 
