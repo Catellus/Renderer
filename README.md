@@ -28,4 +28,5 @@ An educational playground to figure out Vulkan, 3D graphics, and various renderi
 - Custom model loading library
 - Custom image loading library
 - Platform-specific windowing (To move away from GLFW)
-
+---
+![](Guns.PNG)
