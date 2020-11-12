@@ -1,7 +1,7 @@
 # Renderer
 A 3D renderer using the Vulkan API.
 An educational playground to figure out Vulkan, 3D graphics, and various rendering techniques
-![](PBRTextured.PNG)
+![](Guns.PNG)
 ---
 ## Implemented
 - Boilerplate Vulkan
@@ -29,4 +29,4 @@ An educational playground to figure out Vulkan, 3D graphics, and various renderi
 - Custom image loading library
 - Platform-specific windowing (To move away from GLFW)
 ---
-![](Guns.PNG)
+![](PBRTextured.PNG)

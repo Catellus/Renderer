@@ -10,6 +10,8 @@
 #include "VulkanDevice.h"
 #include "Lights.h"
 
+#include "ecs/ecs.h"
+
 namespace skel
 {
 	namespace shaders
@@ -28,36 +30,14 @@ public:
 	skel::shaders::ShaderTypes type;
 	VkDescriptorSet descriptorSet;
 
-	std::vector<VkBuffer> buffers = {};
-	std::vector<VkImageView> imageViews = {};
-	std::vector<VkSampler> samplers = {};
-
-	VkBuffer& AddBuffer()
-	{
-		VkBuffer* tmpBuffer = new VkBuffer();
-		buffers.push_back(*tmpBuffer);
-		return buffers[static_cast<uint32_t>(buffers.size()) - 1];
-	}
-
-	VkImageView& AddImageView()
-	{
-		VkImageView* tmpView = new VkImageView();
-		imageViews.push_back(*tmpView);
-		return imageViews[static_cast<uint32_t>(imageViews.size()) -1];
-	}
-
-	VkSampler& AddSampler()
-	{
-		VkSampler* tmpSampler = new VkSampler();
-		samplers.push_back(*tmpSampler);
-		return samplers[static_cast<uint32_t>(samplers.size()) - 1];
-	}
+	std::vector<BufferComponent*> buffers = {};
+	std::vector<TextureComponent*> textures = {};
 
 	void GetDescriptorWriteSets(std::vector<VkWriteDescriptorSet>& _outSet, std::vector<VkDescriptorBufferInfo>& bufferDescriptors, std::vector<VkDescriptorImageInfo>& imageDescriptors)
 	{
 		uint32_t descriptorIndex = 0;
 		uint64_t buffersSize = static_cast<uint64_t>(buffers.size());
-		uint64_t imagesSize  = static_cast<uint64_t>(imageViews.size());
+		uint64_t imagesSize  = static_cast<uint64_t>(textures.size());
 		_outSet.resize(buffersSize + imagesSize);
 		bufferDescriptors.resize(buffersSize);
 		imageDescriptors.resize(imagesSize);
@@ -69,7 +49,7 @@ public:
 			VkDescriptorBufferInfo bufferDescriptor = {};
 			bufferDescriptor.offset = 0;
 			bufferDescriptor.range = VK_WHOLE_SIZE;
-			bufferDescriptor.buffer = buffer;
+			bufferDescriptor.buffer = buffer->buffer;
 			bufferDescriptors[descriptorIndex] = bufferDescriptor;
 			tmp = skel::initializers::WriteDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &bufferDescriptors[descriptorIndex], descriptorIndex);
 			_outSet[descriptorIndex] = tmp;
@@ -81,8 +61,8 @@ public:
 		{
 			VkDescriptorImageInfo imageDescriptor = {};
 			imageDescriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imageDescriptor.imageView = imageViews[i];
-			imageDescriptor.sampler = samplers[i];
+			imageDescriptor.imageView = textures[i]->view;
+			imageDescriptor.sampler = textures[i]->sampler;
 			imageDescriptors[i] = imageDescriptor;
 			tmp = skel::initializers::WriteDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imageDescriptors[i], descriptorIndex);
 			_outSet[descriptorIndex] = tmp;
@@ -96,13 +76,16 @@ public:
 	{
 		for (auto buffer : buffers)
 		{
-			vkDestroyBuffer(_device, buffer, nullptr);
+			vkDestroyBuffer(_device, buffer->buffer, nullptr);
+			vkFreeMemory(_device, buffer->memory, nullptr);
 		}
 
-		for (uint32_t i = 0; i < static_cast<uint32_t>(imageViews.size()); i++)
+		for (auto& tex : textures)
 		{
-			vkDestroyImageView(_device, imageViews[i], nullptr);
-			vkDestroySampler(_device, samplers[i], nullptr);
+			vkDestroyImage(_device, tex->image, nullptr);
+			vkDestroyImageView(_device, tex->view, nullptr);
+			vkDestroySampler(_device, tex->sampler, nullptr);
+			vkFreeMemory(_device, tex->memory, nullptr);
 		}
 	}
 };

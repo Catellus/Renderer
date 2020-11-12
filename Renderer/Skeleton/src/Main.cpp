@@ -19,6 +19,7 @@
 #include <glm/gtx/hash.hpp>
 
 #include "VulkanDevice.h"
+#include "ecs/ecs.h"
 #include "Mesh.h"
 #include "Object.h"
 #include "Initializers.h"
@@ -43,12 +44,12 @@ private:
 
 	const std::string vertShaderDir = SHADER_DIR + "PBR_vert.spv";
 	const std::string fragShaderDir = SHADER_DIR + "PBR_frag.spv";
-	const std::string albedoTextureDir    = TEXTURE_DIR + "CyborgWeapon\\Weapon_albedo.png";
-	const std::string normalTextureDir    = TEXTURE_DIR + "CyborgWeapon\\Weapon_normal.png";
-	const std::string metallicTextureDir  = TEXTURE_DIR + "CyborgWeapon\\Weapon_metallic.png";
-	const std::string roughnessTextureDir = TEXTURE_DIR + "CyborgWeapon\\Weapon_roughness.png";
-	const std::string aoTextureDir        = TEXTURE_DIR + "CyborgWeapon\\Weapon_ao.png";
-	const std::string testModelDir = MODEL_DIR + "CyborgWeapon\\Cyborg_Weapon.obj";
+	//const std::string albedoTextureDir    = TEXTURE_DIR + "CyborgWeapon\\Weapon_albedo.png";
+	//const std::string normalTextureDir    = TEXTURE_DIR + "CyborgWeapon\\Weapon_normal.png";
+	//const std::string metallicTextureDir  = TEXTURE_DIR + "CyborgWeapon\\Weapon_metallic.png";
+	//const std::string roughnessTextureDir = TEXTURE_DIR + "CyborgWeapon\\Weapon_roughness.png";
+	//const std::string aoTextureDir        = TEXTURE_DIR + "CyborgWeapon\\Weapon_ao.png";
+	//const std::string testModelDir = MODEL_DIR + "CyborgWeapon\\Cyborg_Weapon.obj";
 
 	//const std::string albedoTextureDir    = TEXTURE_DIR + "bigTextures\\spaceBlanket\\SpaceBlanket_albedo.png";
 	//const std::string normalTextureDir    = TEXTURE_DIR + "bigTextures\\spaceBlanket\\SpaceBlanket_normal.png";
@@ -56,6 +57,13 @@ private:
 	//const std::string roughnessTextureDir = TEXTURE_DIR + "bigTextures\\spaceBlanket\\SpaceBlanket_roughness.png";
 	//const std::string aoTextureDir        = TEXTURE_DIR + "bigTextures\\spaceBlanket\\SpaceBlanket_ao.png";
 	//const std::string testModelDir = MODEL_DIR + "TestShapes\\Cube.obj";
+
+	const std::string albedoTextureDir    = TEXTURE_DIR + "TestTextures\\White_albedo.png";
+	const std::string normalTextureDir    = TEXTURE_DIR + "TestTextures\\EggCartonFoam_normal.png";
+	const std::string metallicTextureDir  = TEXTURE_DIR + "TestTextures\\Blank_normal.png";
+	const std::string roughnessTextureDir = TEXTURE_DIR + "TestTextures\\Blank_normal.png";
+	const std::string aoTextureDir        = TEXTURE_DIR + "TestTextures\\Blank_normal.png";
+	const std::string testModelDir = MODEL_DIR + "TestShapes\\SphereSmooth.obj";
 
 	const std::string unlitVertShaderDir = SHADER_DIR + "unlit_vert.spv";
 	const std::string unlitFragShaderDir = SHADER_DIR + "unlit_frag.spv";
@@ -250,13 +258,14 @@ private:
 				testObject->AttachTexture(albedoTextureDir.c_str());
 				testObject->AttachBuffer(sizeof(skel::MvpInfo));
 				testObject->AttachBuffer(sizeof(skel::lights::ShaderLights));
-				testObject->mvpMemory = &testObject->bufferMemories[0];
-				testObject->lightBufferMemory = &testObject->bufferMemories[1];
+				testObject->mvpMemory = &testObject->shader.buffers[0]->memory;
+				testObject->lightBufferMemory = &testObject->shader.buffers[1]->memory;
 
 				opaqueShaderDescriptor.CreateDescriptorSets(device->logicalDevice, testObject->shader);
 				testObject->transform.position.x = float(2 * x - 1);
 				testObject->transform.position.y = float(-2 * y + 1);
-				testObject->transform.scale *= 2.f;
+				//testObject->transform.scale *= 2.f;
+				testObject->transform.scale *= 0.5f;
 			}
 		}
 
@@ -310,8 +319,8 @@ private:
 			object->AttachBuffer(sizeof(skel::MvpInfo));
 			object->AttachBuffer(sizeof(glm::vec3));
 			//object->AttachTexture((index %2 == 1) ? testTextureADir.c_str() : testTextureBDir.c_str());
-			object->mvpMemory = &object->bufferMemories[0];
-			bulbColorMemory = &object->bufferMemories[1];
+			object->mvpMemory = &object->shader.buffers[0]->memory;
+			bulbColorMemory = &object->shader.buffers[1]->memory;
 			unlitShaderDescriptor.CreateDescriptorSets(device->logicalDevice, object->shader);
 			object->transform.position = finalLights.pointLights[index].position;
 			object->transform.scale *= 0.05f;

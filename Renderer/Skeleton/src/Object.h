@@ -52,8 +52,6 @@ public:
 	VkDeviceMemory* lightBufferMemory;
 	BaseShader shader;
 
-	std::vector<VkDeviceMemory> bufferMemories;
-
 // ==============================================
 // Functions
 // ==============================================
@@ -73,50 +71,29 @@ public:
 	// Destroy this object's buffers
 	~Object()
 	{
-		for (auto& memory : bufferMemories)
-		{
-			vkFreeMemory(device->logicalDevice, memory, nullptr);
-		}
-
-		for (uint32_t i = 0; i < static_cast<uint32_t>(images.size()); i++)
-		{
-			vkDestroyImage(device->logicalDevice, images[i], nullptr);
-			vkFreeMemory(device->logicalDevice, imageMemories[i], nullptr);
-		}
-
 		shader.Cleanup(device->logicalDevice);
 		mesh.Cleanup(device->logicalDevice);
 	}
 
 	void AttachTexture(const char* _directory)
 	{
-		VkImage* textureImage = new VkImage();
-		images.push_back(*textureImage);
-		VkImage& image = images[static_cast<uint32_t>(images.size()) - 1];
+		TextureComponent* texture = new TextureComponent();
+		shader.textures.push_back(texture);
 
-		VkDeviceMemory* textureMemory = new VkDeviceMemory();
-		imageMemories.push_back(*textureMemory);
-		VkDeviceMemory& memory = imageMemories[static_cast<uint32_t>(imageMemories.size()) - 1];
-
-		VkImageView& view = shader.AddImageView();
-		VkSampler& sampler = shader.AddSampler();
-		skel::CreateTexture(device, _directory, image, memory, view, sampler);
+		skel::CreateTexture(device, _directory, texture->image, texture->memory, texture->view, texture->sampler);
 	}
 
 	void AttachBuffer(VkDeviceSize _size)
 	{
-		VkBuffer& shaderBuffer = shader.AddBuffer();
-
-		VkDeviceMemory* memory = new VkDeviceMemory();
-		bufferMemories.push_back(*memory);
-		//VkDeviceMemory& bufferMemory = bufferMemories[static_cast<uint32_t>(bufferMemories.size()) - 1];
+		BufferComponent* component = new BufferComponent();
+		shader.buffers.push_back(component);
 
 		device->CreateBuffer(
 			_size,
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			shaderBuffer,
-			bufferMemories[static_cast<uint32_t>(bufferMemories.size()) - 1]
+			component->buffer,
+			component->memory
 		);
 	}
 
