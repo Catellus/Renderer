@@ -1,11 +1,9 @@
-#pragma  once
+#pragma once
 
 #include <iostream>
 #include <string>
 #include <unordered_map>
 
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb/stb_image.h>
 #include <vulkan/vulkan.h>
 
 #include "VulkanDevice.h"
@@ -14,7 +12,7 @@
 namespace skel
 {
 	// Transforms the input image's layout for copying data into
-	void TransitionImageLayout(VulkanDevice* _device, VkImage _image, VkFormat _format, VkImageLayout _oldLayout, VkImageLayout _newLayout)
+	inline void TransitionImageLayout(VulkanDevice* _device, VkImage _image, VkFormat _format, VkImageLayout _oldLayout, VkImageLayout _newLayout)
 	{
 		VkCommandBuffer commandBuffer = _device->BeginSingleTimeCommands(_device->graphicsCommandPoolIndex);
 
@@ -55,7 +53,7 @@ namespace skel
 		_device->EndSingleTimeCommands(commandBuffer, _device->graphicsCommandPoolIndex, _device->graphicsQueue);
 	}
 
-	void CreateTextureSampler(VulkanDevice* _device, VkSampler& _imageSampler)
+	inline void CreateTextureSampler(VulkanDevice* _device, VkSampler& _imageSampler)
 	{
 		VkSamplerCreateInfo createInfo = {};
 		createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -79,7 +77,7 @@ namespace skel
 			throw std::runtime_error("Failed to create texture sampler");
 	}
 
-	VkImageView CreateImageView(VulkanDevice* _device, VkImage _image, VkFormat _format, VkImageAspectFlags _aspectFlags)
+	inline VkImageView CreateImageView(VulkanDevice* _device, VkImage _image, VkFormat _format, VkImageAspectFlags _aspectFlags)
 	{
 		VkImageViewCreateInfo viewInfo = {};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -99,14 +97,14 @@ namespace skel
 		return imageView;
 	}
 
-	void CreateTextureImageView(VulkanDevice* _device, VkImage& _image, VkImageView& _imageView)
+	inline void CreateTextureImageView(VulkanDevice* _device, VkImage& _image, VkImageView& _imageView)
 	{
 		//_imageView = CreateImageView(_device, _image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 		_imageView = CreateImageView(_device, _image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 	}
 
 	// Defines and executes a command to copy the buffer to the image
-	void CopyBufferToImage(VulkanDevice* _device, VkBuffer _buffer, VkImage _image, uint32_t _width, uint32_t _height)
+	inline void CopyBufferToImage(VulkanDevice* _device, VkBuffer _buffer, VkImage _image, uint32_t _width, uint32_t _height)
 	{
 		VkCommandBuffer commandBuffer = _device->BeginSingleTimeCommands(_device->transientPoolIndex);
 
@@ -127,7 +125,7 @@ namespace skel
 	}
 
 	// Returns the index of the first memory type on the GPU with the desired filter and properties
-	uint32_t FindMemoryType(VulkanDevice* _device, uint32_t _typeFilter, VkMemoryPropertyFlags _properties)
+	inline uint32_t FindMemoryType(VulkanDevice* _device, uint32_t _typeFilter, VkMemoryPropertyFlags _properties)
 	{
 		VkPhysicalDeviceMemoryProperties memoryProperties;
 		vkGetPhysicalDeviceMemoryProperties(_device->physicalDevice, &memoryProperties);
@@ -142,7 +140,7 @@ namespace skel
 	}
 
 	// Creates an image, and allocates and binds memory for it
-	void CreateImage(VulkanDevice* _device, uint32_t _width, uint32_t _height, VkFormat _format, VkImageTiling _tiling, VkImageUsageFlags _usage, VkMemoryPropertyFlags _properties, VkImage& _image, VkDeviceMemory& _imageMemory)
+	inline void CreateImage(VulkanDevice* _device, uint32_t _width, uint32_t _height, VkFormat _format, VkImageTiling _tiling, VkImageUsageFlags _usage, VkMemoryPropertyFlags _properties, VkImage& _image, VkDeviceMemory& _imageMemory)
 	{
 		VkImageCreateInfo createInfo = {};
 		createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -173,60 +171,6 @@ namespace skel
 			throw std::runtime_error("Failed to allocate image memory");
 
 		vkBindImageMemory(_device->logicalDevice, _image, _imageMemory, 0);
-	}
-
-	// Loads the input texture, and copies it to an image
-	void CreateTextureImage(VulkanDevice* _device, const std::string _directory, VkImage& _image, VkDeviceMemory& _imageMemory)
-	{
-		int textureWidth, textureHeight, textureChannels;
-		stbi_uc* pixels = stbi_load(_directory.c_str(), &textureWidth, &textureHeight, &textureChannels, STBI_rgb_alpha);
-		VkDeviceSize imageSize = (uint64_t)textureWidth * (uint64_t)textureHeight * 4;
-
-		if (!pixels)
-			throw std::runtime_error("Failed to load texture image");
-
-		VkBuffer stagingBuffer;
-		VkDeviceMemory stagingBufferMemory;
-		_device->CreateBuffer(
-			imageSize,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			stagingBuffer,
-			stagingBufferMemory
-		);
-
-		_device->CopyDataToBufferMemory(pixels, (size_t)imageSize, stagingBufferMemory);
-		stbi_image_free(pixels);
-
-		CreateImage(
-			_device,
-			(uint32_t)textureWidth,
-			(uint32_t)textureHeight,
-			//VK_FORMAT_R8G8B8A8_SRGB,
-			VK_FORMAT_R8G8B8A8_UNORM,
-			VK_IMAGE_TILING_OPTIMAL,
-			VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			_image,
-			_imageMemory
-		);
-
-		//TransitionImageLayout(_device, _image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-		TransitionImageLayout(_device, _image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-		CopyBufferToImage(_device, stagingBuffer, _image, (uint32_t)textureWidth, (uint32_t)textureHeight);
-		//TransitionImageLayout(_device, _image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-		TransitionImageLayout(_device, _image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-		vkDestroyBuffer(_device->logicalDevice, stagingBuffer, nullptr);
-		vkFreeMemory(_device->logicalDevice, stagingBufferMemory, nullptr);
-	}
-
-	// Creates an image, imageView, and sampler
-	void CreateTexture(VulkanDevice* _device, const std::string _dir, VkImage& _image, VkDeviceMemory& _imageMemory, VkImageView& _imageView, VkSampler& _imageSampler)
-	{
-		CreateTextureImage(_device, _dir, _image, _imageMemory);
-		CreateTextureImageView(_device, _image, _imageView);
-		CreateTextureSampler(_device, _imageSampler);
 	}
 }
 

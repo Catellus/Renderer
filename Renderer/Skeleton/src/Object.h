@@ -8,6 +8,7 @@
 #include "Texture.h"
 #include "Lights.h"
 #include "Shaders.h"
+#include "FileLoader.h"
 
 #include <iostream>
 
@@ -38,7 +39,7 @@ class Object
 // ==============================================
 private:
 	VulkanDevice* device;
-	Mesh mesh;
+	Mesh* mesh = nullptr;
 
 	skel::MvpInfo mvp;
 
@@ -48,8 +49,6 @@ private:
 
 public:
 	skel::Transform transform;
-	VkDeviceMemory* mvpMemory;
-	VkDeviceMemory* lightBufferMemory;
 	BaseShader shader;
 
 // ==============================================
@@ -59,20 +58,25 @@ public:
 	// Builds the object's mesh and loads its textures
 	Object(
 		VulkanDevice* _device,
-		const char* _modelDirectory,
-		skel::shaders::ShaderTypes _shaderType
+		skel::shaders::ShaderTypes _shaderType,
+		const char* _modelDirectory = nullptr
 		) : device(_device)
 	{
+		// Guarantee the MVP matrices will be buffer 0
+		AttachBuffer(sizeof(skel::MvpInfo));
 		mvp.model = glm::mat4(1.0f);
 
-		mesh = LoadMesh(device, _modelDirectory);
+		if (_modelDirectory != nullptr)
+			mesh = LoadMesh(device, _modelDirectory);
 	}
 
 	// Destroy this object's buffers
 	~Object()
 	{
 		shader.Cleanup(device->logicalDevice);
-		mesh.Cleanup(device->logicalDevice);
+
+		if (mesh)
+			mesh->Cleanup(device->logicalDevice);
 	}
 
 	void AttachTexture(const char* _directory)
@@ -80,7 +84,7 @@ public:
 		TextureComponent* texture = new TextureComponent();
 		shader.textures.push_back(texture);
 
-		skel::CreateTexture(device, _directory, texture->image, texture->memory, texture->view, texture->sampler);
+		CreateTexture(device, _directory, texture->image, texture->memory, texture->view, texture->sampler);
 	}
 
 	void AttachBuffer(VkDeviceSize _size)
@@ -98,13 +102,16 @@ public:
 	}
 
 	// Records commands to the input CommandBuffer
-	void Draw(VkCommandBuffer _commandBuffer, VkPipelineLayout pipelineLayout)
+	void Draw(VkCommandBuffer _commandBuffer, VkPipelineLayout _pipelineLayout)
 	{
+		if (!mesh)
+			return;
+
 		VkDeviceSize offsets[] = { 0 };
-		vkCmdBindVertexBuffers(_commandBuffer, 0, 1, &mesh.vertexBuffer, offsets);
-		vkCmdBindIndexBuffer(_commandBuffer, mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-		vkCmdBindDescriptorSets(_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &shader.descriptorSet, 0, nullptr);
-		vkCmdDrawIndexed(_commandBuffer, (uint32_t)mesh.indices.size(), 1, 0, 0, 0);
+		vkCmdBindVertexBuffers(_commandBuffer, 0, 1, &mesh->vertexBuffer, offsets);
+		vkCmdBindIndexBuffer(_commandBuffer, mesh->indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdBindDescriptorSets(_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _pipelineLayout, 0, 1, &shader.descriptorSet, 0, nullptr);
+		vkCmdDrawIndexed(_commandBuffer, (uint32_t)mesh->indices.size(), 1, 0, 0, 0);
 	}
 
 	// Turns the Transform into its model matrix
@@ -119,7 +126,7 @@ public:
 		mvp.view		= _view;
 		mvp.proj		= _projection;
 		mvp.camPosition = _camPosition;
-		device->CopyDataToBufferMemory(&mvp, sizeof(mvp), *mvpMemory);
+		device->CopyDataToBufferMemory(&mvp, sizeof(mvp), shader.buffers[0]->memory);
 	}
 
 };

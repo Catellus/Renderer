@@ -89,10 +89,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\Renderer.cpp" />
     <ClCompile Include="src\Camera.h" />
     <ClCompile Include="src\Main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\FileLoader.h" />
+    <ClInclude Include="src\Renderer.h" />
     <ClInclude Include="src\ecs\ecs.h" />
     <ClInclude Include="src\Initializers.h" />
     <ClInclude Include="src\Lights.h" />

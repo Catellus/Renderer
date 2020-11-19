@@ -99,31 +99,28 @@ namespace skel
 		{
 			VkDescriptorSetLayout descriptorSetLayout;
 			VkDescriptorPool descriptorPool;
-			std::vector<VkDescriptorSetLayoutBinding> layoutBindings;
-			std::vector<VkDescriptorPoolSize> poolSizes;
 
-			void CreateLayoutBindingsAndPool(VkDevice& _device, std::vector<VkDescriptorSetLayoutBinding> _newBindings, uint32_t _objectCount)
+			void CreateLayoutBindingsAndPool(VkDevice& _device, const std::vector<VkDescriptorSetLayoutBinding>& _bindings, uint32_t _objectCount)
 			{
 				// Create Descriptor Set Layout
 				// ==============================
-				layoutBindings = _newBindings;
 
 				VkDescriptorSetLayoutCreateInfo layoutCreateInfo = {};
 				layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-				layoutCreateInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
-				layoutCreateInfo.pBindings = layoutBindings.data();
+				layoutCreateInfo.bindingCount = static_cast<uint32_t>(_bindings.size());
+				layoutCreateInfo.pBindings = _bindings.data();
 
 				if (vkCreateDescriptorSetLayout(_device, &layoutCreateInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
 					throw std::runtime_error("Failed to create a descriptor set layout");
 
 				// Create Descriptor Pool
 				// ==============================
-				uint32_t bindingsCount = static_cast<uint32_t>(layoutBindings.size());
+				uint32_t bindingsCount = static_cast<uint32_t>(_bindings.size());
 
-				poolSizes.resize(bindingsCount);
+				std::vector<VkDescriptorPoolSize> poolSizes(bindingsCount);
 				for (uint32_t i = 0; i < bindingsCount; i++)
 				{
-					poolSizes[i] = skel::initializers::DescriptorPoolSize(layoutBindings[i].descriptorType, _objectCount);
+					poolSizes[i] = skel::initializers::DescriptorPoolSize(_bindings[i].descriptorType, _objectCount);
 				}
 
 				VkDescriptorPoolCreateInfo poolCreateInfo = {};

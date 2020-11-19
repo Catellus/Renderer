@@ -266,6 +266,33 @@ namespace skel
 			return createInfo;
 		}
 
+		inline VkSwapchainCreateInfoKHR SwapchainCreateInfo(
+			VkSurfaceFormatKHR _format,
+			VkPresentModeKHR _presentMode,
+			VkExtent2D _imageExtent,
+			VkSurfaceKHR _surface,
+			uint32_t _minImageCount,
+			VkSurfaceTransformFlagBitsKHR _transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+			uint32_t _arrayLayers = 1
+			)
+		{
+			VkSwapchainCreateInfoKHR createInfo = {};
+			createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+			createInfo.imageFormat = _format.format;
+			createInfo.imageColorSpace = _format.colorSpace;
+			createInfo.presentMode = _presentMode;
+			createInfo.imageExtent = _imageExtent;
+			createInfo.preTransform = _transform;
+			createInfo.minImageCount = _minImageCount;
+			createInfo.surface = _surface;
+			createInfo.clipped = VK_TRUE;
+			createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+			createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+			createInfo.imageArrayLayers = _arrayLayers;
+			createInfo.oldSwapchain = VK_NULL_HANDLE;
+			return createInfo;
+		}
+
 
 	}
 }
