@@ -27,6 +27,26 @@ Renderer::Renderer(GLFWwindow* _window)
 		},
 		4
 		);
+	pbrShaderDescriptor.CreateLayoutBindingsAndPool(
+		device->logicalDevice,
+		{
+			// MVP matrices
+			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
+			// Lights info
+			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
+			// Albedo map
+			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2),
+			// Normal map
+			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3),
+			// Metallic
+			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 4),
+			// Roughness
+			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 5),
+			// AO
+			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 6),
+		},
+		4
+		);
 
 	CreateRenderer();
 
@@ -78,8 +98,10 @@ void Renderer::CreateRenderer()
 	CreateRenderPass();
 
 	// Make better dynamic
-	CreatePipelineLayout(layout, &unlitShaderDescriptor.descriptorSetLayout);
-	CreateGraphicsPipeline();
+	CreatePipelineLayout(pipelineLayout, &unlitShaderDescriptor.descriptorSetLayout);
+	CreateGraphicsPipeline(unlitVertShaderDir, unlitFragShaderDir, pipelineLayout, pipeline);
+	CreatePipelineLayout(altPipelineLayout, &pbrShaderDescriptor.descriptorSetLayout);
+	CreateGraphicsPipeline(pbrVertShaderDir, pbrFragShaderDir, altPipelineLayout, altPipeline);
 
 	CreateDepthResources();
 	CreateFrameBuffers();
@@ -103,7 +125,7 @@ void Renderer::CleanupRenderer()
 		);
 
 	vkDestroyPipeline(device->logicalDevice, pipeline, nullptr);
-	vkDestroyPipelineLayout(device->logicalDevice, layout, nullptr);
+	vkDestroyPipelineLayout(device->logicalDevice, pipelineLayout, nullptr);
 	vkDestroyRenderPass(device->logicalDevice, renderpass, nullptr);
 
 	for (const auto& v : swapchainImageViews)
@@ -626,7 +648,7 @@ void Renderer::CreatePipelineLayout(VkPipelineLayout& _pipelineLayout, VkDescrip
 }
 
 // Define the properties for each stage of the graphics pipeline
-void Renderer::CreateGraphicsPipeline()
+void Renderer::CreateGraphicsPipeline(const char* _vertShaderDir, const char* _fragShaderDir, const VkPipelineLayout& _pipelineLayout, VkPipeline& _pipeline)
 {
 // ===== Viewport =====
 	VkViewport viewport;
@@ -712,7 +734,7 @@ void Renderer::CreateGraphicsPipeline()
 // ===== Pipeline Creation =====
 	VkGraphicsPipelineCreateInfo pipelineCreateInfo = 
 		skel::initializers::GraphicsPipelineCreateInfo(
-			layout,
+			pipelineLayout,
 			renderpass
 		);
 
@@ -725,39 +747,39 @@ void Renderer::CreateGraphicsPipeline()
 	pipelineCreateInfo.pColorBlendState		= &colorBlendState;
 	pipelineCreateInfo.pDynamicState		= &dynamicState;
 
-	std::vector<char> unlitVertFile = LoadFile(unlitVertShaderDir);
-	std::vector<char> unlitFragFile = LoadFile(unlitFragShaderDir);
-	VkShaderModule unlitVertShaderModule = CreateShaderModule(unlitVertFile);
-	VkShaderModule unlitFragShaderModule = CreateShaderModule(unlitFragFile);
+	std::vector<char> vertShaderFile = LoadFile(_vertShaderDir);
+	std::vector<char> fragShaderFile = LoadFile(_fragShaderDir);
+	VkShaderModule vertShaderModule = CreateShaderModule(vertShaderFile);
+	VkShaderModule fragShaderModule = CreateShaderModule(fragShaderFile);
 
-	VkPipelineShaderStageCreateInfo unlitVertShaderStageInfo =
+	VkPipelineShaderStageCreateInfo vertShaderStageInfo =
 		skel::initializers::PipelineShaderStageCreateInfo(
 			VK_SHADER_STAGE_VERTEX_BIT,
-			unlitVertShaderModule
+			vertShaderModule
 		);
-	VkPipelineShaderStageCreateInfo unlitFragShaderStageInfo =
+	VkPipelineShaderStageCreateInfo fragShaderStageInfo =
 		skel::initializers::PipelineShaderStageCreateInfo(
 			VK_SHADER_STAGE_FRAGMENT_BIT,
-			unlitFragShaderModule
+			fragShaderModule
 		);
 
-	std::vector<VkPipelineShaderStageCreateInfo> unlitShaderStages = {
-		unlitVertShaderStageInfo,
-		unlitFragShaderStageInfo
+	std::vector<VkPipelineShaderStageCreateInfo> shaderStages = {
+		vertShaderStageInfo,
+		fragShaderStageInfo
 	};
 
 	// Create the unlit-shadered pipeline =====
-	pipelineCreateInfo.stageCount = static_cast<uint32_t>(unlitShaderStages.size());
-	pipelineCreateInfo.pStages = unlitShaderStages.data();
-	pipelineCreateInfo.layout = layout;
+	pipelineCreateInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
+	pipelineCreateInfo.pStages = shaderStages.data();
+	pipelineCreateInfo.layout = _pipelineLayout;
 
 	CheckResultCritical(
-		vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1, &pipelineCreateInfo, nullptr, &pipeline),
+		vkCreateGraphicsPipelines(device->logicalDevice, nullptr, 1, &pipelineCreateInfo, nullptr, &_pipeline),
 		"Failed to create unlit pipeline"
 		);
 
-	vkDestroyShaderModule(device->logicalDevice, unlitVertShaderModule, nullptr);
-	vkDestroyShaderModule(device->logicalDevice, unlitFragShaderModule, nullptr);
+	vkDestroyShaderModule(device->logicalDevice, vertShaderModule, nullptr);
+	vkDestroyShaderModule(device->logicalDevice, fragShaderModule, nullptr);
 }
 
 // Create a pipeline usable object for shader code

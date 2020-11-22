@@ -67,6 +67,10 @@ public:
 	const char* unlitVertShaderDir = ".\\res\\shaders\\unlit_vert.spv";
 	const char* unlitFragShaderDir = ".\\res\\shaders\\unlit_frag.spv";
 
+	skel::shaders::ShaderDescriptorInformation pbrShaderDescriptor;
+	const char* pbrVertShaderDir = ".\\res\\shaders\\PBR_vert.spv";
+	const char* pbrFragShaderDir = ".\\res\\shaders\\PBR_frag.spv";
+
 // ------------------------------------------- //
 // Renderer
 // ------------------------------------------- //
@@ -91,8 +95,10 @@ public:
 	VkDeviceMemory depthImageMemory;
 
 	VkRenderPass renderpass;
-	VkPipelineLayout layout;
+	VkPipelineLayout pipelineLayout;
 	VkPipeline pipeline;
+	VkPipelineLayout altPipelineLayout;
+	VkPipeline altPipeline;
 
 	// Synchronization
 	const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -162,9 +168,9 @@ public:
 	// Binds shader uniforms
 	void CreatePipelineLayout(VkPipelineLayout&, VkDescriptorSetLayout*, uint32_t = 1);
 	// Define the properties for each stage of the graphics pipeline
-	void CreateGraphicsPipeline();
+	void CreateGraphicsPipeline(const char*, const char*, const VkPipelineLayout&, VkPipeline&);
 	// Create a pipeline usable object for shader code
-	VkShaderModule CreateShaderModule(const std::vector<char> _code);
+	VkShaderModule CreateShaderModule(const std::vector<char>);
 	// Creates an image and view for the depth texture
 	void CreateDepthResources();
 	// Specifies the image view(s) to bind to renderpass attachments

@@ -73,8 +73,9 @@ private:
 	const std::string unlitModelDir = MODEL_DIR + "TestShapes\\Sphere.obj";
 
 	struct ApplicationTimeInformation {
-		float totalTime;
-		float deltaTime;
+		float totalTime = 0;
+		float deltaTime = 0;
+		uint32_t frameNumber = 0;
 	} time;
 
 // ===== App/Window Info =====
@@ -99,6 +100,13 @@ private:
 	skel::shaders::ShaderDescriptorInformation unlitShaderDescriptor;
 
 // ===== Objects =====
+
+	struct objectCapsule
+	{
+		std::vector<Object*>* testObjects;
+		std::vector<Object*>* bulbs;
+	} capsule;
+
 	Camera* cam;
 	std::vector<Object*> testObjects;
 	std::vector<Object*> bulbs;
@@ -131,7 +139,6 @@ private:
 	// Initializes all aspects required for rendering
 	void Initialize()
 	{
-		//	testObjects.resize(4);
 		bulbs.resize(4);
 
 		// Fundamental setup
@@ -175,29 +182,6 @@ private:
 		);
 
 		//CreatePipelineLayout(unlitPipelineLayout, &unlitShaderDescriptor.descriptorSetLayout);
-
-		for (int x = 0; x < 2; x++)
-		{
-			for (int y = 0; y < 2; y++)
-			{
-				uint32_t objectIndex = 2 * x + y;
-				testObjects[objectIndex] = new Object(device, skel::shaders::ShaderTypes::Opaque, testModelDir.c_str());
-				Object*& testObject = testObjects[objectIndex];
-
-				testObject->AttachTexture(albedoTextureDir.c_str());
-				testObject->AttachTexture(normalTextureDir.c_str());
-				testObject->AttachTexture(metallicTextureDir.c_str());
-				testObject->AttachTexture(roughnessTextureDir.c_str());
-				testObject->AttachTexture(albedoTextureDir.c_str());
-				testObject->AttachBuffer(sizeof(skel::lights::ShaderLights));
-
-				opaqueShaderDescriptor.CreateDescriptorSets(device->logicalDevice, testObject->shader);
-				testObject->transform.position.x = float(2 * x - 1);
-				testObject->transform.position.y = float(-2 * y + 1);
-				//testObject->transform.scale *= 2.f;
-				testObject->transform.scale *= 0.5f;
-			}
-		}
 		*/
 
 		// Setup the objects in the world
@@ -256,18 +240,33 @@ private:
 		}
 
 // TODO : Create a better solution for recording arbitrary data to command buffers -- Including dynamic additions / removal
-		renderer->CreateAndBeginCommandBuffers(ArbitraryCommandBufferBinding, &bulbs);
+
+		capsule.bulbs = &bulbs;
+		capsule.testObjects = &testObjects;
+
+		renderer->CreateAndBeginCommandBuffers(ArbitraryCommandBufferBinding, &capsule);
 
 	}
 
 	static void ArbitraryCommandBufferBinding(VkCommandBuffer& _buffer, Renderer* r, void* _context)
 	{
-		std::vector<Object*>& bulbs = *reinterpret_cast<std::vector<Object*>*>(_context);
+		objectCapsule& objects = *reinterpret_cast<objectCapsule*>(_context);
+
 		vkCmdBindPipeline(_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->pipeline);
-		for (auto& object : bulbs)
+		for (auto& object : *objects.bulbs)
 		{
-			object->Draw(_buffer, r->layout);
+			object->Draw(_buffer, r->pipelineLayout);
 		}
+
+		if (static_cast<uint32_t>(objects.testObjects->size()) > 0)
+		{
+			vkCmdBindPipeline(_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, r->altPipeline);
+			for (auto& object : *objects.testObjects)
+			{
+				object->Draw(_buffer, r->altPipelineLayout);
+			}
+		}
+
 	}
 
 	// Initializes GLFW and creates a window
@@ -344,6 +343,40 @@ private:
 
 			renderer->RenderFrame();
 
+			// TODO : Make the dynamic system actually fully dynamic (No pre-defined SetLayoutBindings)
+			// This system is super botched -- baby steps, right?
+			if (time.totalTime >= 5 && static_cast<uint32_t>(testObjects.size()) == 0)
+			{
+				testObjects.resize(4);
+
+				for (int x = 0; x < 2; x++)
+				{
+					for (int y = 0; y < 2; y++)
+					{
+						uint32_t objectIndex = 2 * x + y;
+						testObjects[objectIndex] = new Object(renderer->device, skel::shaders::ShaderTypes::Opaque, testModelDir.c_str());
+						Object*& testObject = testObjects[objectIndex];
+
+						testObject->AttachTexture(albedoTextureDir.c_str());
+						testObject->AttachTexture(normalTextureDir.c_str());
+						testObject->AttachTexture(metallicTextureDir.c_str());
+						testObject->AttachTexture(roughnessTextureDir.c_str());
+						testObject->AttachTexture(albedoTextureDir.c_str());
+						testObject->AttachBuffer(sizeof(skel::lights::ShaderLights));
+
+						renderer->pbrShaderDescriptor.CreateDescriptorSets(renderer->device->logicalDevice, testObject->shader);
+						testObject->transform.position.x = float(2 * x - 1);
+						testObject->transform.position.y = float(-2 * y + 1);
+						//testObject->transform.scale *= 2.f;
+						testObject->transform.scale *= 0.5f;
+
+						renderer->device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), testObject->shader.buffers[1]->memory);
+					}
+				}
+
+				renderer->RecreateRenderer();
+			}
+
 			if (LateUpdate)
 				LateUpdate();
 
@@ -353,6 +386,9 @@ private:
 			time.deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(current - old).count();
 			time.totalTime = std::chrono::duration<float, std::chrono::seconds::period>(current - start).count();
 			old = current;
+
+			std::printf("%5f (%4d FPS) : %6d\n", time.deltaTime, (int)(1/time.deltaTime), time.frameNumber);
+			time.frameNumber++;
 		}
 		vkDeviceWaitIdle(renderer->device->logicalDevice);
 	}
@@ -396,19 +432,19 @@ private:
 		finalLights.spotLights[1].position = cam->cameraPosition;
 		finalLights.spotLights[1].direction = cam->cameraFront;
 
-		//for (auto& testObject : testObjects)
-		//{
-		//	//testObject->transform.position.x = glm::sin(time.totalTime);
-		//	//testObject->transform.rotation.y = glm::sin(time.totalTime) * 45.0f;
-		//	//testObject->transform.rotation.z = glm::cos(time.totalTime * 2.0f) * 30.0f;
-		//	testObject->transform.rotation.y = time.totalTime * 45.0f;
-		//	testObject->transform.rotation.x = time.totalTime * 15.0f;
-		//	testObject->transform.rotation.z = time.totalTime * 5.f;
+		for (auto& testObject : testObjects)
+		{
+			//testObject->transform.position.x = glm::sin(time.totalTime);
+			//testObject->transform.rotation.y = glm::sin(time.totalTime) * 45.0f;
+			//testObject->transform.rotation.z = glm::cos(time.totalTime * 2.0f) * 30.0f;
+			testObject->transform.rotation.y = time.totalTime * 45.0f;
+			testObject->transform.rotation.x = time.totalTime * 15.0f;
+			testObject->transform.rotation.z = time.totalTime * 5.f;
 
-		//	//testObject->transform.position.z = glm::cos(time.totalTime);
-		//	testObject->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
-		//	device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), testObject->shader.buffers[1]->memory);
-		//}
+			//testObject->transform.position.z = glm::cos(time.totalTime);
+			testObject->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
+			renderer->device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), testObject->shader.buffers[1]->memory);
+		}
 
 		for (auto& object : bulbs)
 		{
