@@ -1,9 +1,8 @@
 #pragma once
 
-#include "Common.h"
-//#define GLFW_INCLUDE_VULKAN
-//#include "GLFW/glfw3.h"
+#include <string>
 
+#include "Common.h"
 #include "Renderer.h"
 #include "Camera.h"
 
@@ -15,12 +14,24 @@ class SkeletonApplication
 // ==============================================
 // STRUCTS
 // ==============================================
-
+protected:
 	struct ApplicationTimeInformation {
 		float totalTime = 0;
 		float deltaTime = 0;
 		uint32_t frameNumber = 0;
 	} time;
+
+// ==============================================
+// CONSTANTS
+// ==============================================
+
+	// Window
+	const int windowWidth = 800;
+	const int windowHeight = 600;
+	const char* windowTitle = "Test Renderer";
+
+	// Input
+	const float mouseSensativity = 0.1f;
 
 // ==============================================
 // VARIABLES
@@ -29,15 +40,7 @@ protected:
 	skel::Renderer* renderer;
 
 	skel::Camera* cam;
-
-	// Window
-	const int windowWidth = 800;
-	const int windowHeight = 600;
-	const char* windowTitle = "Test Renderer";
 	GLFWwindow* window;
-
-	// Input
-	const float mouseSensativity = 0.1f;
 
 // ==============================================
 // FUNCTIONS
@@ -52,7 +55,8 @@ protected:
 // VIRTUAL ======================================
 // ==============================================
 
-	// (Pure virtual) Initialize anything the child might need
+	// (Pure virtual) Called before the renderer is created
+	// Allows renderer modification
 	virtual void ChildInitialize() = 0;
 	// (Pure virtual) Where everything happens
 	virtual void MainLoopCore() = 0;

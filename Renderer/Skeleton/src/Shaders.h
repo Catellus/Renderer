@@ -1,11 +1,9 @@
 #pragma once
 
 #include <vector>
+#include <string>
 
-#include <vulkan/vulkan.h>
-#define GLM_FORCE_RADIANS
-#include <glm/glm.hpp>
-
+#include "Common.h"
 #include "Initializers.h"
 #include "VulkanDevice.h"
 #include "Lights.h"
@@ -33,7 +31,11 @@ public:
 	std::vector<BufferComponent*> buffers = {};
 	std::vector<TextureComponent*> textures = {};
 
-	void GetDescriptorWriteSets(std::vector<VkWriteDescriptorSet>& _outSet, std::vector<VkDescriptorBufferInfo>& bufferDescriptors, std::vector<VkDescriptorImageInfo>& imageDescriptors)
+	void GetDescriptorWriteSets(
+		std::vector<VkWriteDescriptorSet>& _outSet,
+		std::vector<VkDescriptorBufferInfo>& bufferDescriptors,
+		std::vector<VkDescriptorImageInfo>& imageDescriptors
+		)
 	{
 		uint32_t descriptorIndex = 0;
 		uint64_t buffersSize = static_cast<uint64_t>(buffers.size());
@@ -51,7 +53,12 @@ public:
 			bufferDescriptor.range = VK_WHOLE_SIZE;
 			bufferDescriptor.buffer = buffer->buffer;
 			bufferDescriptors[descriptorIndex] = bufferDescriptor;
-			tmp = skel::initializers::WriteDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &bufferDescriptors[descriptorIndex], descriptorIndex);
+			tmp = skel::initializers::WriteDescriptorSet(
+				descriptorSet,
+				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				&bufferDescriptors[descriptorIndex],
+				descriptorIndex
+				);
 			_outSet[descriptorIndex] = tmp;
 
 			descriptorIndex++;
@@ -64,7 +71,12 @@ public:
 			imageDescriptor.imageView = textures[i]->view;
 			imageDescriptor.sampler = textures[i]->sampler;
 			imageDescriptors[i] = imageDescriptor;
-			tmp = skel::initializers::WriteDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &imageDescriptors[i], descriptorIndex);
+			tmp = skel::initializers::WriteDescriptorSet(
+				descriptorSet,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				&imageDescriptors[i],
+				descriptorIndex
+				);
 			_outSet[descriptorIndex] = tmp;
 
 			descriptorIndex++;
@@ -78,6 +90,7 @@ public:
 		{
 			vkDestroyBuffer(_device, buffer->buffer, nullptr);
 			vkFreeMemory(_device, buffer->memory, nullptr);
+			free(buffer);
 		}
 
 		for (auto& tex : textures)
@@ -86,6 +99,7 @@ public:
 			vkDestroyImageView(_device, tex->view, nullptr);
 			vkDestroySampler(_device, tex->sampler, nullptr);
 			vkFreeMemory(_device, tex->memory, nullptr);
+			free(tex);
 		}
 	}
 };
@@ -97,44 +111,75 @@ namespace skel
 		// Handles the descriptor information for the render pipeline about opaque shaders
 		struct ShaderDescriptorInformation
 		{
+// TODO : Find a way to store names in const char* -- The pointer gets cleared when using string.c_str()
+			std::string vertName;
+			std::string fragName;
+			std::vector<VkDescriptorSetLayoutBinding> bindings;
 			VkDescriptorSetLayout descriptorSetLayout;
 			VkDescriptorPool descriptorPool;
+			uint32_t poolSize = 1;
+			uint32_t boundObjects = 0;
 
-			void CreateLayoutBindingsAndPool(VkDevice& _device, const std::vector<VkDescriptorSetLayoutBinding>& _bindings, uint32_t _objectCount)
+			ShaderDescriptorInformation(std::string _vn, std::string _fn)
 			{
+				vertName = _vn;
+				fragName = _fn;
+			}
+
+			void CreateLayoutBindingsAndPool(
+				VkDevice& _device,
+				const std::vector<VkDescriptorSetLayoutBinding>& _bindings,
+				uint32_t _objectCount
+				)
+			{
+				bindings = _bindings;
+
 				// Create Descriptor Set Layout
 				// ==============================
 
 				VkDescriptorSetLayoutCreateInfo layoutCreateInfo = {};
 				layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-				layoutCreateInfo.bindingCount = static_cast<uint32_t>(_bindings.size());
-				layoutCreateInfo.pBindings = _bindings.data();
+				layoutCreateInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+				layoutCreateInfo.pBindings = bindings.data();
 
 				if (vkCreateDescriptorSetLayout(_device, &layoutCreateInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS)
 					throw std::runtime_error("Failed to create a descriptor set layout");
 
+				CreateDescriptorPool(_device, _objectCount);
+			}
+
+			void CreateDescriptorPool(VkDevice& _device, uint32_t _poolSize)
+			{
 				// Create Descriptor Pool
 				// ==============================
-				uint32_t bindingsCount = static_cast<uint32_t>(_bindings.size());
+				uint32_t bindingsCount = static_cast<uint32_t>(bindings.size());
 
 				std::vector<VkDescriptorPoolSize> poolSizes(bindingsCount);
 				for (uint32_t i = 0; i < bindingsCount; i++)
 				{
-					poolSizes[i] = skel::initializers::DescriptorPoolSize(_bindings[i].descriptorType, _objectCount);
+					poolSizes[i] = skel::initializers::DescriptorPoolSize(bindings[i].descriptorType, _poolSize);
 				}
 
 				VkDescriptorPoolCreateInfo poolCreateInfo = {};
 				poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 				poolCreateInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
 				poolCreateInfo.pPoolSizes = poolSizes.data();
-				poolCreateInfo.maxSets = _objectCount;
+				poolCreateInfo.maxSets = _poolSize;
 
 				if (vkCreateDescriptorPool(_device, &poolCreateInfo, nullptr, &descriptorPool) != VK_SUCCESS)
 					throw std::runtime_error("Failed to create descriptor pool");
+
+				poolSize = _poolSize;
 			}
 
 			void CreateDescriptorSets(VkDevice& _device, BaseShader& _shaderInfo)
 			{
+				// Resize the pool to allow additional objects
+				if (boundObjects >= poolSize)
+				{
+					CreateDescriptorPool(_device, poolSize * 2);
+				}
+
 				VkDescriptorSetAllocateInfo allocInfo = {};
 				allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 				allocInfo.descriptorPool = descriptorPool;
@@ -150,6 +195,8 @@ namespace skel
 				_shaderInfo.GetDescriptorWriteSets(descriptorWrites, bufferInfos, imageInfos);
 
 				vkUpdateDescriptorSets(_device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+
+				boundObjects++;
 			}
 
 			void Cleanup(VkDevice& _device)

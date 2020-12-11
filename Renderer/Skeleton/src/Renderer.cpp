@@ -17,50 +17,24 @@ skel::Renderer::Renderer(GLFWwindow* _window)
 	CreateSurface();
 	CreateVulkanDevice();
 	CreateCommandPools();
-
-	// Bind shader descriptors
-	unlitShaderDescriptor.CreateLayoutBindingsAndPool(
-		device->logicalDevice,
-		{
-			// MVP matrices
-			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
-			// Object color
-			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
-			// Test texture
-			//skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2)
-		},
-		4
-		);
-	pbrShaderDescriptor.CreateLayoutBindingsAndPool(
-		device->logicalDevice,
-		{
-			// MVP matrices
-			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
-			// Lights info
-			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
-			// Albedo map
-			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2),
-			// Normal map
-			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3),
-			// Metallic
-			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 4),
-			// Roughness
-			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 5),
-			// AO
-			skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 6),
-		},
-		4
-		);
-
-	CreateRenderer();
-
-	CreateSyncObjects();
 }
 
 skel::Renderer::~Renderer()
 {
+	vkFreeCommandBuffers(
+		device->logicalDevice,
+		device->commandPools[graphicsCommandPoolIndex],
+		static_cast<uint32_t>(commandBuffers.size()),
+		commandBuffers.data()
+	);
+
 	CleanupRenderer();
-	unlitShaderDescriptor.Cleanup(device->logicalDevice);
+
+	for (const auto& descriptor : shaderDescriptors)
+	{
+		descriptor->Cleanup(device->logicalDevice);
+		free(descriptor);
+	}
 
 	for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{
@@ -70,11 +44,19 @@ skel::Renderer::~Renderer()
 	}
 
 	device->Cleanup();
+	free(device);
 	vkDestroySurfaceKHR(instance, surface, nullptr);
 	vkDestroyInstance(instance, nullptr);
 
 	glfwDestroyWindow(window);
 	glfwTerminate();
+}
+
+// Creates the render pipeline & components
+void skel::Renderer::Initialize()
+{
+	CreateRenderer();
+	CreateSyncObjects();
 }
 
 void skel::Renderer::RecreateRenderer()
@@ -101,15 +83,16 @@ void skel::Renderer::CreateRenderer()
 	CreateSwapchain();
 	CreateRenderPass();
 
-	// Make better dynamic
-	CreatePipelineLayout(pipelineLayouts[0], &unlitShaderDescriptor.descriptorSetLayout);
-	CreateGraphicsPipeline(unlitVertShaderDir, unlitFragShaderDir, pipelineLayouts[0], pipelines[0]);
-	CreatePipelineLayout(pipelineLayouts[1], &pbrShaderDescriptor.descriptorSetLayout);
-	CreateGraphicsPipeline(pbrVertShaderDir, pbrFragShaderDir, pipelineLayouts[1], pipelines[1]);
+	for (uint32_t i = 0; i < static_cast<uint32_t>(shaderDescriptors.size()); i++)
+	{
+		CreatePipelineLayout(pipelineLayouts[i], &shaderDescriptors[i]->descriptorSetLayout);
+		CreateGraphicsPipeline(shaderDescriptors[i]->vertName.c_str(), shaderDescriptors[i]->fragName.c_str(), pipelineLayouts[i], pipelines[i]);
+	}
 
 	CreateDepthResources();
 	CreateFrameBuffers();
 	CreateAndBeginCommandBuffers();
+	RecordRenderingCommandBuffers();
 }
 
 void skel::Renderer::CleanupRenderer()
@@ -120,13 +103,6 @@ void skel::Renderer::CleanupRenderer()
 
 	for (const auto& f : swapchainFrameBuffers)
 		vkDestroyFramebuffer(device->logicalDevice, f, nullptr);
-
-	vkFreeCommandBuffers(
-		device->logicalDevice,
-		device->commandPools[graphicsCommandPoolIndex],
-		static_cast<uint32_t>(commandBuffers.size()),
-		commandBuffers.data()
-		);
 
 	vkDestroyPipeline(device->logicalDevice, pipelines[0], nullptr);
 	vkDestroyPipelineLayout(device->logicalDevice, pipelineLayouts[0], nullptr);
@@ -426,7 +402,7 @@ void skel::Renderer::CreateSyncObjects()
 // Create the basic command pool for rendering
 void skel::Renderer::CreateCommandPools()
 {
-	graphicsCommandPoolIndex = device->CreateCommandPool(device->queueFamilyIndices.graphics, 0);
+	graphicsCommandPoolIndex = device->CreateCommandPool(device->queueFamilyIndices.graphics, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 	device->graphicsCommandPoolIndex = graphicsCommandPoolIndex;
 }
 
@@ -655,7 +631,7 @@ void skel::Renderer::CreatePipelineLayout(VkPipelineLayout& _pipelineLayout, VkD
 void skel::Renderer::CreateGraphicsPipeline(const char* _vertShaderDir, const char* _fragShaderDir, const VkPipelineLayout& _pipelineLayout, VkPipeline& _pipeline)
 {
 // ===== Viewport =====
-	VkViewport viewport;
+	VkViewport viewport = {};
 	viewport.width = (float)swapchainExtent.width;
 	viewport.height = (float)swapchainExtent.height;
 	viewport.x = 0;
@@ -663,7 +639,7 @@ void skel::Renderer::CreateGraphicsPipeline(const char* _vertShaderDir, const ch
 	viewport.minDepth = 0.0f;
 	viewport.maxDepth = 1.0f;
 
-	VkRect2D scissor;
+	VkRect2D scissor = {};
 	scissor.extent = swapchainExtent;
 	scissor.offset = { 0, 0 };
 
@@ -767,14 +743,14 @@ void skel::Renderer::CreateGraphicsPipeline(const char* _vertShaderDir, const ch
 			fragShaderModule
 		);
 
-	std::vector<VkPipelineShaderStageCreateInfo> shaderStages = {
+	VkPipelineShaderStageCreateInfo shaderStages[2] = {
 		vertShaderStageInfo,
 		fragShaderStageInfo
 	};
 
 	// Create the unlit-shadered pipeline =====
-	pipelineCreateInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
-	pipelineCreateInfo.pStages = shaderStages.data();
+	pipelineCreateInfo.stageCount = 2;
+	pipelineCreateInfo.pStages = shaderStages;
 	pipelineCreateInfo.layout = _pipelineLayout;
 
 	CheckResultCritical(
@@ -847,17 +823,28 @@ void skel::Renderer::CreateFrameBuffers()
 	}
 }
 
-// Allocates space for, creates, and returns a set of rendering command buffers
+// Allocates space for a set of rendering command buffers
 void skel::Renderer::CreateAndBeginCommandBuffers()
 {
-	if (renderableObjects == nullptr)
+	AllocateCommandBuffers(VK_COMMAND_BUFFER_LEVEL_PRIMARY, graphicsCommandPoolIndex, commandBuffers);
+}
+
+void skel::Renderer::RecordRenderingCommandBuffers(std::vector<std::vector<Object*>*>* _renderableObjects /*= nullptr*/)
+{
+	if (_renderableObjects != nullptr)
+	{
+		renderableObjects = _renderableObjects;
+	}
+	else if (renderableObjects == nullptr)
+	{
 		return;
+	}
 
-	uint32_t commandCount = AllocateCommandBuffers(VK_COMMAND_BUFFER_LEVEL_PRIMARY, graphicsCommandPoolIndex, commandBuffers);
+	vkDeviceWaitIdle(device->logicalDevice);
+	vkResetCommandPool(device->logicalDevice, device->commandPools[graphicsCommandPoolIndex], 0);
 
-	std::array<VkClearValue, 2> clearValues;
+	std::array<VkClearValue, 2> clearValues = {};
 	clearValues[0].color = { 0.02f, 0.025f, 0.03f, 1.0f };
-	//clearValues[0].color = { 0.15294117647f, 0.17254901961f, 0.18823529412f, 1.0f };
 	clearValues[1].depthStencil = { 1.0f, 0 };
 
 	VkCommandBufferBeginInfo beginInfo = {};
@@ -872,27 +859,29 @@ void skel::Renderer::CreateAndBeginCommandBuffers()
 	renderPassBeginInfo.clearValueCount = (uint32_t)clearValues.size();
 	renderPassBeginInfo.pClearValues = clearValues.data();
 
+	uint32_t commandCount = (uint32_t)swapchainFrameBuffers.size();
+
 	for (uint32_t i = 0; i < commandCount; i++)
 	{
 		// Begin recording a command
 		CheckResultCritical(
 			vkBeginCommandBuffer(commandBuffers[i], &beginInfo),
 			"Failed to begin command buffer"
-			);
+		);
 
 		renderPassBeginInfo.framebuffer = swapchainFrameBuffers[i];
 		vkCmdBeginRenderPass(commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		//for (uint32_t j = 0; j < static_cast<uint32_t>(pipelines.size()); j++)
-		for (uint32_t j = 0; j < 1; j++)
+		for (uint32_t j = 0; j < static_cast<uint32_t>(renderableObjects->size()); j++)
 		{
-			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[j]);
+			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[0]);
 
-			std::printf("%d\n", (*renderableObjects).size());
+			std::vector<Object*>* objectGeneration = (*renderableObjects)[j];
 
-			for (auto& obj : *renderableObjects)
+			for (auto& obj : *objectGeneration)
 			{
-				obj->Draw(commandBuffers[i], pipelineLayouts[j]);
+				obj->Draw(commandBuffers[i], pipelineLayouts[0]);
 			}
 		}
 
@@ -961,5 +950,18 @@ std::vector<char> skel::Renderer::LoadFile(const char* _directory)
 
 	stream.close();
 	return bytes;
+}
+
+void skel::Renderer::AddShader(
+	const char* _name,
+	const std::vector<VkDescriptorSetLayoutBinding>& _bindings,
+	uint32_t _objectCount
+	)
+{
+	std::string name = std::string(shaderPrefix) + std::string(_name);
+
+	shaderDescriptors.push_back(new skel::shaders::ShaderDescriptorInformation(name + "_vert.spv", name + "_frag.spv"));
+	skel::shaders::ShaderDescriptorInformation& newShader = *shaderDescriptors[static_cast<uint32_t>(shaderDescriptors.size()) - 1];
+	newShader.CreateLayoutBindingsAndPool(device->logicalDevice, _bindings, _objectCount);
 }
 

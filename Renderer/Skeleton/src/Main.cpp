@@ -10,13 +10,19 @@
 class Application : public skel::SkeletonApplication
 {
 private:
+	std::vector<std::vector<Object*>*> renderableObjects;
 	std::vector<Object*> bulbs;
+	std::vector<Object*> subjects;
+
 	skel::lights::ShaderLights finalLights;
 
 protected:
 	void ChildInitialize()
 	{
 		bulbs.resize(4);
+		subjects.resize(4);
+
+		BindShaderDescriptors();
 
 		#pragma region LightInfo
 		glm::vec3 directionalColor = { 0.0f, 0.0f, 0.0f };
@@ -58,7 +64,7 @@ protected:
 			object = new Object(renderer->device, skel::shaders::ShaderTypes::Unlit, ".\\res\\models\\TestShapes\\SphereSmooth.obj");
 			object->AttachBuffer(sizeof(glm::vec3));
 			VkDeviceMemory* bulbColorMemory = &object->shader.buffers[1]->memory;
-			renderer->unlitShaderDescriptor.CreateDescriptorSets(renderer->device->logicalDevice, object->shader);
+			renderer->shaderDescriptors[0]->CreateDescriptorSets(renderer->device->logicalDevice, object->shader);
 			object->transform.position = finalLights.pointLights[index].position;
 			object->transform.scale *= 0.05f;
 			renderer->device->CopyDataToBufferMemory(&finalLights.pointLights[index].color, sizeof(glm::vec3), *bulbColorMemory);
@@ -66,16 +72,94 @@ protected:
 			index++;
 		}
 
-		renderer->renderableObjects = &bulbs;
-		renderer->CreateAndBeginCommandBuffers();
+		renderableObjects.push_back(&bulbs);
+		renderer->RecordRenderingCommandBuffers(&renderableObjects);
+	}
+
+	void BindShaderDescriptors()
+	{
+		// Bind shader descriptors
+		renderer->AddShader(
+			"unlit",
+			{
+				// MVP matrices
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
+				// Object color
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
+			},
+			4
+			);
+		//renderer->AddShader(
+		//	"PBR",
+		//	{
+		//		// MVP matrices
+		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
+		//		// Lights info
+		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
+		//		// Albedo map
+		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2),
+		//		// Normal map
+		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3),
+		//		// Metallic
+		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 4),
+		//		// Roughness
+		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 5),
+		//		// AO
+		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 6),
+		//	},
+		//	4
+		//	);
 	}
 
 	void MainLoopCore()
 	{
+		static bool addedSubjects = false;
+
 		// TODO : Create an input manager
 		HandleInput();
 
 		UpdateObjectUniforms();
+
+		if (!addedSubjects && time.totalTime > 1.0f)
+		{
+			addedSubjects = true;
+
+			uint32_t index = 0;
+			glm::vec3 color = { 0.0f, 0.0f, 0.0f };
+
+			for (auto& object : subjects)
+			{
+				object = new Object(renderer->device, skel::shaders::ShaderTypes::Unlit, ".\\res\\models\\TestShapes\\Cube.obj");
+				object->AttachBuffer(sizeof(glm::vec3));
+				VkDeviceMemory* colorMemory = &object->shader.buffers[1]->memory;
+				renderer->shaderDescriptors[0]->CreateDescriptorSets(renderer->device->logicalDevice, object->shader);
+
+				switch (index)
+				{
+				case 0:
+					object->transform.position = { 1.0f, 1.0f, 0.0f };
+					break;
+				case 1:
+					object->transform.position = { 1.0f, -1.0f, 0.0f };
+					color = {0.0f, 0.0f, 1.0f};
+					break;
+				case 2:
+					object->transform.position = { -1.0f, -1.0f, 0.0f };
+					color = {0.0f, 1.0f, 0.0f};
+					break;
+				case 3:
+					object->transform.position = { -1.0f, 1.0f, 0.0f };
+					color = {1.0f, 0.0f, 0.0f};
+					break;
+				}
+
+				renderer->device->CopyDataToBufferMemory(&color, sizeof(glm::vec3), *colorMemory);
+				index++;
+			}
+
+			renderableObjects.push_back(&subjects);
+			renderer->RecordRenderingCommandBuffers(&renderableObjects);
+		}
 
 		renderer->RenderFrame();
 	}
@@ -92,17 +176,34 @@ protected:
 		{
 			object->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
 		}
+
+		if (static_cast<uint32_t>(renderableObjects.size()) > 1)
+		{
+			for (auto& object : subjects)
+			{
+				object->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
+			}
+		}
 	}
 
 	void ChildCleanup()
 	{
+		for (const auto& object : bulbs)
+		{
+			free(object);
+		}
 
+		for (const auto& object : subjects)
+		{
+			free(object);
+		}
 	}
 
 };
 
 int main()
 {
+	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 	try
 	{
 		Application app;
@@ -111,8 +212,10 @@ int main()
 	catch (std::exception& e)
 	{
 		std::cout << e.what() << std::endl;
+		_CrtDumpMemoryLeaks();
 		return EXIT_FAILURE;
 	}
+	_CrtDumpMemoryLeaks();
 	return EXIT_SUCCESS;
 }
 

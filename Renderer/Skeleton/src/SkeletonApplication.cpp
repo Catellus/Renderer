@@ -7,7 +7,6 @@
 void skel::SkeletonApplication::Run()
 {
 	Initialize();
-	ChildInitialize();
 	MainLoop();
 	Cleanup();
 }
@@ -42,6 +41,8 @@ void skel::SkeletonApplication::Initialize()
 	CreateWindow();
 	cam = new skel::Camera((float)windowWidth / (float)windowHeight);
 	renderer = new skel::Renderer(window);
+	ChildInitialize();
+	renderer->Initialize();
 }
 
 void skel::SkeletonApplication::CreateWindow()
@@ -94,6 +95,9 @@ void skel::SkeletonApplication::Cleanup()
 	ChildCleanup();
 
 	renderer->CleanupRenderer();
+	free(renderer);
+
+	free(cam);
 
 	glfwDestroyWindow(window);
 	glfwTerminate();

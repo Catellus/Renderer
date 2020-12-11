@@ -4,12 +4,6 @@
 #include <vector>
 
 #include "Common.h"
-//#define GLFW_INCLUDE_VULKAN
-//#include <GLFW/glfw3.h>
-//#define GLM_FORCE_RADIANS
-//#include <glm/glm.hpp>
-//#include <vulkan/vulkan.h>
-
 #include "VulkanDevice.h"
 #include "Object.h"
 #include "Shaders.h"
@@ -65,13 +59,15 @@ public:
 	const char** glfwRequiredExtentions;
 	uint32_t glfwRequiredExtentionsCount;
 
-	skel::shaders::ShaderDescriptorInformation unlitShaderDescriptor;
+	//skel::shaders::ShaderDescriptorInformation unlitShaderDescriptor;
 	const char* unlitVertShaderDir = ".\\res\\shaders\\unlit_vert.spv";
 	const char* unlitFragShaderDir = ".\\res\\shaders\\unlit_frag.spv";
 
-	skel::shaders::ShaderDescriptorInformation pbrShaderDescriptor;
+	//skel::shaders::ShaderDescriptorInformation pbrShaderDescriptor;
 	const char* pbrVertShaderDir = ".\\res\\shaders\\PBR_vert.spv";
 	const char* pbrFragShaderDir = ".\\res\\shaders\\PBR_frag.spv";
+
+	std::vector<std::vector<Object*>*>* renderableObjects;
 
 // ------------------------------------------- //
 // Renderer
@@ -96,6 +92,7 @@ public:
 	VkImageView depthImageView;
 	VkDeviceMemory depthImageMemory;
 
+	std::vector<skel::shaders::ShaderDescriptorInformation*> shaderDescriptors;
 	VkRenderPass renderpass;
 	std::vector<VkPipelineLayout> pipelineLayouts;
 	std::vector<VkPipeline> pipelines;
@@ -109,11 +106,13 @@ public:
 	std::vector<VkFence> imageIsInFlight;
 
 	std::vector<VkCommandBuffer> commandBuffers;
-	std::vector<Object*>* renderableObjects = nullptr;
 
 public:
 	Renderer(GLFWwindow*);
 	~Renderer();
+
+	// Creates the render pipeline & components
+	void Initialize();
 
 	// Renderer updating
 	// ==========================================
@@ -175,6 +174,8 @@ public:
 	void CreateFrameBuffers();
 	// Allocates space for, creates, and returns a set of rendering command buffers
 	void CreateAndBeginCommandBuffers();
+	// Records draw commands into the command buffers
+	void RecordRenderingCommandBuffers(std::vector<std::vector<Object*>*>* = nullptr);
 	// Allocate memory for command recording
 	uint32_t AllocateCommandBuffers(VkCommandBufferLevel, uint32_t, std::vector<VkCommandBuffer>&);
 	void EndCommandBuffer(VkCommandBuffer&);
@@ -186,6 +187,8 @@ public:
 	VkFormat FindDepthFormat();
 	// Loads a file as binary -- Returns a character vector
 	std::vector<char> LoadFile(const char*);
+
+	void AddShader( const char*, const std::vector<VkDescriptorSetLayoutBinding>&, uint32_t);
 
 }; // Renderer
 

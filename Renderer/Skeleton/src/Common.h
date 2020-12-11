@@ -19,4 +19,10 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
+// Resources
+static const char* resourcePrefix = ".\\res\\";
+static const char* shaderPrefix = ".\\res\\shaders\\";
+static const char* texturePrefix = ".\\res\\textures\\";
+static const char* modelPrefix = ".\\res\\models\\";
+
 

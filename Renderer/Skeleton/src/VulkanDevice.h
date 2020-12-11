@@ -107,6 +107,8 @@ struct VulkanDevice
 		{
 			vkDestroyDevice(logicalDevice, nullptr);
 		}
+
+		delete(this);
 	}
 
 // ==============================================
