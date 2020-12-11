@@ -1,5 +1,4 @@
-#ifndef ECS_H
-#define ECS_H
+#pragma once
 
 #define GLFW_INCLUDE_VULKAN
 #include <glm/glm.hpp>
@@ -35,6 +34,4 @@ struct TextureComponent : public BaseComponent<TextureComponent>
 	VkImageView view;
 	VkSampler sampler;
 };
-
-#endif // !ecs
 

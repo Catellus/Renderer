@@ -592,7 +592,7 @@ class ObjReader {
 /// or not.
 /// Option 'default_vcols_fallback' specifies whether vertex colors should
 /// always be defined, even if no colors are given (fallback to white).
-bool LoadObj(attrib_t *attrib, std::vector<shape_t> *shapes,
+inline bool LoadObj(attrib_t *attrib, std::vector<shape_t> *shapes,
              std::vector<material_t> *materials, std::string *warn,
              std::string *err, const char *filename,
              const char *mtl_basedir = NULL, bool triangulate = true,
@@ -604,7 +604,7 @@ bool LoadObj(attrib_t *attrib, std::vector<shape_t> *shapes,
 /// Returns true when loading .obj/.mtl become success.
 /// Returns warning message into `warn`, and error message into `err`
 /// See `examples/callback_api/` for how to use this function.
-bool LoadObjWithCallback(std::istream &inStream, const callback_t &callback,
+inline bool LoadObjWithCallback(std::istream &inStream, const callback_t &callback,
                          void *user_data = NULL,
                          MaterialReader *readMatFn = NULL,
                          std::string *warn = NULL, std::string *err = NULL);
@@ -613,14 +613,14 @@ bool LoadObjWithCallback(std::istream &inStream, const callback_t &callback,
 /// std::istream for materials.
 /// Returns true when loading .obj become success.
 /// Returns warning and error message into `err`
-bool LoadObj(attrib_t *attrib, std::vector<shape_t> *shapes,
+inline bool LoadObj(attrib_t *attrib, std::vector<shape_t> *shapes,
              std::vector<material_t> *materials, std::string *warn,
              std::string *err, std::istream *inStream,
              MaterialReader *readMatFn = NULL, bool triangulate = true,
              bool default_vcols_fallback = true);
 
 /// Loads materials into std::map
-void LoadMtl(std::map<std::string, int> *material_map,
+inline void LoadMtl(std::map<std::string, int> *material_map,
              std::vector<material_t> *materials, std::istream *inStream,
              std::string *warning, std::string *err);
 
@@ -632,7 +632,7 @@ void LoadMtl(std::map<std::string, int> *material_map,
 /// @param[out] texopt Parsed texopt
 /// @param[in] linebuf Input string
 ///
-bool ParseTextureNameAndOption(std::string *texname, texture_option_t *texopt,
+inline bool ParseTextureNameAndOption(std::string *texname, texture_option_t *texopt,
                                const char *linebuf);
 
 /// =<<========== Legacy v1 API =============================================
@@ -655,7 +655,7 @@ bool ParseTextureNameAndOption(std::string *texname, texture_option_t *texopt,
 
 namespace tinyobj {
 
-MaterialReader::~MaterialReader() {}
+    inline MaterialReader::~MaterialReader() {}
 
 struct vertex_index_t {
   int v_idx, vt_idx, vn_idx;
@@ -1071,7 +1071,7 @@ static inline texture_type_t parseTextureType(
   return ty;
 }
 
-static tag_sizes parseTagTriple(const char **token) {
+static inline tag_sizes parseTagTriple(const char **token) {
   tag_sizes ts;
 
   (*token) += strspn((*token), " \t");
@@ -1097,7 +1097,7 @@ static tag_sizes parseTagTriple(const char **token) {
 }
 
 // Parse triples with index offsets: i, i/j/k, i//k, i/j
-static bool parseTriple(const char **token, int vsize, int vnsize, int vtsize,
+static inline bool parseTriple(const char **token, int vsize, int vnsize, int vtsize,
                         vertex_index_t *ret) {
   if (!ret) {
     return false;
@@ -1151,7 +1151,7 @@ static bool parseTriple(const char **token, int vsize, int vnsize, int vtsize,
 }
 
 // Parse raw triples: i, i/j/k, i//k, i/j
-static vertex_index_t parseRawTriple(const char **token) {
+static inline vertex_index_t parseRawTriple(const char **token) {
   vertex_index_t vi(static_cast<int>(0));  // 0 is an invalid index in OBJ
 
   vi.v_idx = atoi((*token));
@@ -1183,7 +1183,7 @@ static vertex_index_t parseRawTriple(const char **token) {
   return vi;
 }
 
-bool ParseTextureNameAndOption(std::string *texname, texture_option_t *texopt,
+bool inline ParseTextureNameAndOption(std::string *texname, texture_option_t *texopt,
                                const char *linebuf) {
   // @todo { write more robust lexer and parser. }
   bool found_texname = false;
@@ -1269,7 +1269,7 @@ bool ParseTextureNameAndOption(std::string *texname, texture_option_t *texopt,
   }
 }
 
-static void InitTexOpt(texture_option_t *texopt, const bool is_bump) {
+static inline void InitTexOpt(texture_option_t *texopt, const bool is_bump) {
   if (is_bump) {
     texopt->imfchan = 'l';
   } else {
@@ -1295,7 +1295,7 @@ static void InitTexOpt(texture_option_t *texopt, const bool is_bump) {
   texopt->type = TEXTURE_TYPE_NONE;
 }
 
-static void InitMaterial(material_t *material) {
+static inline void InitMaterial(material_t *material) {
   InitTexOpt(&material->ambient_texopt, /* is_bump */ false);
   InitTexOpt(&material->diffuse_texopt, /* is_bump */ false);
   InitTexOpt(&material->specular_texopt, /* is_bump */ false);
@@ -1349,7 +1349,7 @@ static void InitMaterial(material_t *material) {
 
 // code from https://wrf.ecse.rpi.edu//Research/Short_Notes/pnpoly.html
 template <typename T>
-static int pnpoly(int nvert, T *vertx, T *verty, T testx, T testy) {
+static inline int pnpoly(int nvert, T *vertx, T *verty, T testx, T testy) {
   int i, j, c = 0;
   for (i = 0, j = nvert - 1; i < nvert; j = i++) {
     if (((verty[i] > testy) != (verty[j] > testy)) &&
@@ -1362,7 +1362,7 @@ static int pnpoly(int nvert, T *vertx, T *verty, T testx, T testy) {
 }
 
 // TODO(syoyo): refactor function.
-static bool exportGroupsToShape(shape_t *shape, const PrimGroup &prim_group,
+static inline bool exportGroupsToShape(shape_t *shape, const PrimGroup &prim_group,
                                 const std::vector<tag_t> &tags,
                                 const int material_id, const std::string &name,
                                 bool triangulate,
@@ -1660,7 +1660,7 @@ static bool exportGroupsToShape(shape_t *shape, const PrimGroup &prim_group,
 
 // Split a string with specified delimiter character.
 // http://stackoverflow.com/questions/236129/split-a-string-in-c
-static void SplitString(const std::string &s, char delim,
+static inline void SplitString(const std::string &s, char delim,
                         std::vector<std::string> &elems) {
   std::stringstream ss;
   ss.str(s);
@@ -1670,7 +1670,7 @@ static void SplitString(const std::string &s, char delim,
   }
 }
 
-static std::string JoinPath(const std::string &dir,
+static inline std::string JoinPath(const std::string &dir,
                             const std::string &filename) {
   if (dir.empty()) {
     return filename;
@@ -1685,7 +1685,7 @@ static std::string JoinPath(const std::string &dir,
   }
 }
 
-void LoadMtl(std::map<std::string, int> *material_map,
+inline void LoadMtl(std::map<std::string, int> *material_map,
              std::vector<material_t> *materials, std::istream *inStream,
              std::string *warning, std::string *err) {
   (void)err;
@@ -2076,7 +2076,7 @@ void LoadMtl(std::map<std::string, int> *material_map,
   }
 }
 
-bool MaterialFileReader::operator()(const std::string &matId,
+inline bool MaterialFileReader::operator()(const std::string &matId,
                                     std::vector<material_t> *materials,
                                     std::map<std::string, int> *matMap,
                                     std::string *warn, std::string *err) {
@@ -2135,7 +2135,7 @@ bool MaterialFileReader::operator()(const std::string &matId,
   }
 }
 
-bool MaterialStreamReader::operator()(const std::string &matId,
+inline bool MaterialStreamReader::operator()(const std::string &matId,
                                       std::vector<material_t> *materials,
                                       std::map<std::string, int> *matMap,
                                       std::string *warn, std::string *err) {
@@ -2155,7 +2155,7 @@ bool MaterialStreamReader::operator()(const std::string &matId,
   return true;
 }
 
-bool LoadObj(attrib_t *attrib, std::vector<shape_t> *shapes,
+inline bool LoadObj(attrib_t *attrib, std::vector<shape_t> *shapes,
              std::vector<material_t> *materials, std::string *warn,
              std::string *err, const char *filename, const char *mtl_basedir,
              bool trianglulate, bool default_vcols_fallback) {
@@ -2191,7 +2191,7 @@ bool LoadObj(attrib_t *attrib, std::vector<shape_t> *shapes,
                  trianglulate, default_vcols_fallback);
 }
 
-bool LoadObj(attrib_t *attrib, std::vector<shape_t> *shapes,
+inline bool LoadObj(attrib_t *attrib, std::vector<shape_t> *shapes,
              std::vector<material_t> *materials, std::string *warn,
              std::string *err, std::istream *inStream,
              MaterialReader *readMatFn /*= NULL*/, bool triangulate,
@@ -2750,7 +2750,7 @@ bool LoadObj(attrib_t *attrib, std::vector<shape_t> *shapes,
   return true;
 }
 
-bool LoadObjWithCallback(std::istream &inStream, const callback_t &callback,
+inline bool LoadObjWithCallback(std::istream &inStream, const callback_t &callback,
                          void *user_data /*= NULL*/,
                          MaterialReader *readMatFn /*= NULL*/,
                          std::string *warn, /* = NULL*/
@@ -3033,7 +3033,7 @@ bool LoadObjWithCallback(std::istream &inStream, const callback_t &callback,
   return true;
 }
 
-bool ObjReader::ParseFromFile(const std::string &filename,
+inline bool ObjReader::ParseFromFile(const std::string &filename,
                               const ObjReaderConfig &config) {
   std::string mtl_search_path;
 
@@ -3057,7 +3057,7 @@ bool ObjReader::ParseFromFile(const std::string &filename,
   return valid_;
 }
 
-bool ObjReader::ParseFromString(const std::string &obj_text,
+inline bool ObjReader::ParseFromString(const std::string &obj_text,
                                 const std::string &mtl_text,
                                 const ObjReaderConfig &config) {
   std::stringbuf obj_buf(obj_text);

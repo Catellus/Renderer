@@ -3,19 +3,19 @@
 #include <iostream>
 #include <vector>
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-#define GLM_FORCE_RADIANS
-#include <glm/glm.hpp>
-#include <vulkan/vulkan.h>
+#include "Common.h"
+//#define GLFW_INCLUDE_VULKAN
+//#include <GLFW/glfw3.h>
+//#define GLM_FORCE_RADIANS
+//#include <glm/glm.hpp>
+//#include <vulkan/vulkan.h>
 
 #include "VulkanDevice.h"
+#include "Object.h"
 #include "Shaders.h"
 #include "Mesh.h"
 #include "Texture.h"
 #include "Initializers.h"
-
-
 
 #define CheckResultCritical(x, message)			\
 	VkResult vkFunctionResult = x;				\
@@ -24,6 +24,8 @@
 		assert(vkFunctionResult != VK_SUCCESS);	\
 		throw std::runtime_error(message);		\
 	}
+
+namespace skel {
 
 class Renderer
 {
@@ -95,10 +97,8 @@ public:
 	VkDeviceMemory depthImageMemory;
 
 	VkRenderPass renderpass;
-	VkPipelineLayout pipelineLayout;
-	VkPipeline pipeline;
-	VkPipelineLayout altPipelineLayout;
-	VkPipeline altPipeline;
+	std::vector<VkPipelineLayout> pipelineLayouts;
+	std::vector<VkPipeline> pipelines;
 
 	// Synchronization
 	const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -109,9 +109,7 @@ public:
 	std::vector<VkFence> imageIsInFlight;
 
 	std::vector<VkCommandBuffer> commandBuffers;
-	void (*ArbitraryCommandBufferBinding)(VkCommandBuffer&, Renderer*, void*) = nullptr;
-	void* ArbitraryCommandBufferBindingData = nullptr;
-
+	std::vector<Object*>* renderableObjects = nullptr;
 
 public:
 	Renderer(GLFWwindow*);
@@ -176,7 +174,7 @@ public:
 	// Specifies the image view(s) to bind to renderpass attachments
 	void CreateFrameBuffers();
 	// Allocates space for, creates, and returns a set of rendering command buffers
-	void CreateAndBeginCommandBuffers(void (*commands)(VkCommandBuffer&, Renderer*, void*), void*);
+	void CreateAndBeginCommandBuffers();
 	// Allocate memory for command recording
 	uint32_t AllocateCommandBuffers(VkCommandBufferLevel, uint32_t, std::vector<VkCommandBuffer>&);
 	void EndCommandBuffer(VkCommandBuffer&);
@@ -189,5 +187,7 @@ public:
 	// Loads a file as binary -- Returns a character vector
 	std::vector<char> LoadFile(const char*);
 
-};
+}; // Renderer
+
+} // skel
 

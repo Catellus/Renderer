@@ -9,29 +9,13 @@
 #include <chrono>
 #include <unordered_map>
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-#include <vulkan/vulkan.h>
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-//#define GLM_FORCE_LEFT_HANDED // Sort of breaks GLSL (ALl Zs need to be flipped)
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtx/hash.hpp>
-
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <tinyobjloader/tiny_obj_loader.h>
-
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb/stb_image.h>
-
+#include "Common.h"
 #include "Mesh.h"
 #include "Texture.h"
 
 // Loads the object from disk
 // Returns a mesh built from the input file
-Mesh* LoadMesh(VulkanDevice* _device, const char* _directory)
+inline Mesh* LoadMesh(VulkanDevice* _device, const char* _directory)
 {
 	// Load the mesh with Tinyobj
 	tinyobj::attrib_t attrib;
@@ -100,7 +84,7 @@ Mesh* LoadMesh(VulkanDevice* _device, const char* _directory)
 }
 
 // Loads the input texture, and copies it to an image
-void LoadTextureToImage(VulkanDevice* _device, const std::string _directory, VkImage& _image, VkDeviceMemory& _imageMemory)
+inline void LoadTextureToImage(VulkanDevice* _device, const std::string _directory, VkImage& _image, VkDeviceMemory& _imageMemory)
 {
 	int textureWidth, textureHeight, textureChannels;
 	stbi_uc* pixels = stbi_load(_directory.c_str(), &textureWidth, &textureHeight, &textureChannels, STBI_rgb_alpha);
@@ -146,7 +130,7 @@ void LoadTextureToImage(VulkanDevice* _device, const std::string _directory, VkI
 }
 
 // Creates an image, imageView, and sampler
-void CreateTexture(VulkanDevice* _device, const std::string _dir, VkImage& _image, VkDeviceMemory& _imageMemory, VkImageView& _imageView, VkSampler& _imageSampler)
+inline void CreateTexture(VulkanDevice* _device, const std::string _dir, VkImage& _image, VkDeviceMemory& _imageMemory, VkImageView& _imageView, VkSampler& _imageSampler)
 {
 	LoadTextureToImage(_device, _dir, _image, _imageMemory);
 	skel::CreateTextureImageView(_device, _image, _imageView);

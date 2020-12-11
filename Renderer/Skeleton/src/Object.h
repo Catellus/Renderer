@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vulkan/vulkan.h>
+#include "Common.h"
 
 #include "Initializers.h"
 #include "VulkanDevice.h"
@@ -15,7 +15,7 @@
 namespace skel
 {
 	// Matrices for translating objects to clip space
-	struct MvpInfo {
+	inline struct MvpInfo {
 		alignas(16) glm::mat4 model;
 		alignas(16) glm::mat4 view;
 		alignas(16) glm::mat4 proj;
@@ -23,7 +23,7 @@ namespace skel
 	};
 
 	// Vectors transformed into the object's model matrix
-	struct Transform {
+	inline struct Transform {
 		glm::vec3 position	= { 0.0f, 0.0f, 0.0f };
 		glm::vec3 rotation	= { 0.0f, 0.0f, 0.0f };
 		glm::vec3 scale		= { 1.0f, 1.0f, 1.0f };
@@ -84,7 +84,7 @@ public:
 		TextureComponent* texture = new TextureComponent();
 		shader.textures.push_back(texture);
 
-		CreateTexture(device, _directory, texture->image, texture->memory, texture->view, texture->sampler);
+		//CreateTexture(device, _directory, texture->image, texture->memory, texture->view, texture->sampler);
 	}
 
 	void AttachBuffer(VkDeviceSize _size)

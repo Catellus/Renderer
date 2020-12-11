@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{df8d3b0f-9b76-49cc-a25a-68ecf46d8ccb}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -22,6 +25,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\Renderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SkeletonApplication.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -56,18 +62,42 @@
     <ClInclude Include="src\FileLoader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\SkeletonApplication.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Common.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="res\default.frag" />
-    <None Include="res\default.vert" />
-    <None Include="res\shaders\default.frag" />
-    <None Include="res\shaders\default.vert" />
-    <None Include="res\shaders\PBR.frag" />
-    <None Include="res\shaders\PBR.vert" />
-    <None Include="res\shaders\unlit.frag" />
-    <None Include="res\shaders\unlit.vert" />
+    <None Include="res\default.frag">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="res\shaders\default.frag">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="res\default.vert">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="res\shaders\default.vert">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="res\shaders\PBR.frag">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="res\shaders\PBR.vert">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="res\shaders\unlit.frag">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="res\shaders\unlit.vert">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="NOTES.txt" />
+    <Text Include="NOTES.txt">
+      <Filter>Shaders</Filter>
+    </Text>
   </ItemGroup>
 </Project>

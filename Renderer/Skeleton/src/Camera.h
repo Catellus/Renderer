@@ -1,11 +1,8 @@
+#pragma once
 
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-//#define GLM_FORCE_LEFT_HANDED // Sort of breaks GLSL (ALl Zs need to be flipped)
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtx/hash.hpp>
+#include "Common.h"
+
+namespace skel {
 
 class Camera
 {
@@ -17,8 +14,8 @@ public:
 	glm::vec3 cameraFront;
 	glm::vec3 worldUp;
 
-	double pitch = 0.0f;
-	double yaw = 0.0f; // 0 = looking down the positive X axis, increases counter-clockwise
+	float pitch = 0.0f;
+	float yaw = 0.0f; // 0 = looking down the positive X axis, increases counter-clockwise
 
 	glm::mat4 view;
 	glm::mat4 projection;
@@ -62,5 +59,7 @@ public:
 		view = glm::lookAt(cameraPosition, cameraPosition + cameraFront, worldUp);
 	}
 
-};
+}; // Camera
+
+} // skel
 

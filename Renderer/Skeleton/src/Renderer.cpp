@@ -1,11 +1,15 @@
+
 #include "Renderer.h"
 
 #include <set>
 #include <string>
 #include <fstream>
 
-Renderer::Renderer(GLFWwindow* _window)
+skel::Renderer::Renderer(GLFWwindow* _window)
 {
+	pipelineLayouts.resize(2);
+	pipelines.resize(2);
+
 	window = _window;
 	GetGLFWRequiredExtensions();
 
@@ -53,7 +57,7 @@ Renderer::Renderer(GLFWwindow* _window)
 	CreateSyncObjects();
 }
 
-Renderer::~Renderer()
+skel::Renderer::~Renderer()
 {
 	CleanupRenderer();
 	unlitShaderDescriptor.Cleanup(device->logicalDevice);
@@ -73,7 +77,7 @@ Renderer::~Renderer()
 	glfwTerminate();
 }
 
-void Renderer::RecreateRenderer()
+void skel::Renderer::RecreateRenderer()
 {
 	vkDeviceWaitIdle(device->logicalDevice);
 
@@ -92,23 +96,23 @@ void Renderer::RecreateRenderer()
 	CreateRenderer();
 }
 
-void Renderer::CreateRenderer()
+void skel::Renderer::CreateRenderer()
 {
 	CreateSwapchain();
 	CreateRenderPass();
 
 	// Make better dynamic
-	CreatePipelineLayout(pipelineLayout, &unlitShaderDescriptor.descriptorSetLayout);
-	CreateGraphicsPipeline(unlitVertShaderDir, unlitFragShaderDir, pipelineLayout, pipeline);
-	CreatePipelineLayout(altPipelineLayout, &pbrShaderDescriptor.descriptorSetLayout);
-	CreateGraphicsPipeline(pbrVertShaderDir, pbrFragShaderDir, altPipelineLayout, altPipeline);
+	CreatePipelineLayout(pipelineLayouts[0], &unlitShaderDescriptor.descriptorSetLayout);
+	CreateGraphicsPipeline(unlitVertShaderDir, unlitFragShaderDir, pipelineLayouts[0], pipelines[0]);
+	CreatePipelineLayout(pipelineLayouts[1], &pbrShaderDescriptor.descriptorSetLayout);
+	CreateGraphicsPipeline(pbrVertShaderDir, pbrFragShaderDir, pipelineLayouts[1], pipelines[1]);
 
 	CreateDepthResources();
 	CreateFrameBuffers();
-	CreateAndBeginCommandBuffers(nullptr, nullptr);
+	CreateAndBeginCommandBuffers();
 }
 
-void Renderer::CleanupRenderer()
+void skel::Renderer::CleanupRenderer()
 {
 	vkDestroyImageView(device->logicalDevice, depthImageView, nullptr);
 	vkDestroyImage(device->logicalDevice, depthImage, nullptr);
@@ -124,8 +128,8 @@ void Renderer::CleanupRenderer()
 		commandBuffers.data()
 		);
 
-	vkDestroyPipeline(device->logicalDevice, pipeline, nullptr);
-	vkDestroyPipelineLayout(device->logicalDevice, pipelineLayout, nullptr);
+	vkDestroyPipeline(device->logicalDevice, pipelines[0], nullptr);
+	vkDestroyPipelineLayout(device->logicalDevice, pipelineLayouts[0], nullptr);
 	vkDestroyRenderPass(device->logicalDevice, renderpass, nullptr);
 
 	for (const auto& v : swapchainImageViews)
@@ -135,7 +139,7 @@ void Renderer::CleanupRenderer()
 }
 
 // Handles rendering and presentation to the window
-void Renderer::RenderFrame()
+void skel::Renderer::RenderFrame()
 {
 	uint32_t imageIndex;
 
@@ -209,7 +213,7 @@ void Renderer::RenderFrame()
 // ==============================================
 
 // Retrieve all extensions GLFW needs
-void Renderer::GetGLFWRequiredExtensions()
+void skel::Renderer::GetGLFWRequiredExtensions()
 {
 	glfwRequiredExtentions = glfwGetRequiredInstanceExtensions(&glfwRequiredExtentionsCount);
 	for (uint32_t i = 0; i < glfwRequiredExtentionsCount; i++)
@@ -219,7 +223,7 @@ void Renderer::GetGLFWRequiredExtensions()
 }
 
 // Creates a Vulkan instance with app information
-void Renderer::CreateInstance()
+void skel::Renderer::CreateInstance()
 {
 	VkApplicationInfo appInfo = {};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -241,13 +245,13 @@ void Renderer::CreateInstance()
 }
 
 // Make GLFW create a surface to present images to
-void Renderer::CreateSurface()
+void skel::Renderer::CreateSurface()
 {
 	glfwCreateWindowSurface(instance, window, nullptr, &surface);
 }
 
 // Selects a physical device and initializes a logical device
-void Renderer::CreateVulkanDevice()
+void skel::Renderer::CreateVulkanDevice()
 {
 	// Discover GPUs in the system
 	uint32_t deviceCount;
@@ -272,7 +276,7 @@ void Renderer::CreateVulkanDevice()
 }
 
 // Determines the suitability of physical devices and selects the first suitable
-uint32_t Renderer::ChooseSuitableDevice(std::vector<VkPhysicalDevice> _devices, uint32_t& _graphicsIndex, uint32_t& _transferIndex, uint32_t& _presentIndex)
+uint32_t skel::Renderer::ChooseSuitableDevice(std::vector<VkPhysicalDevice> _devices, uint32_t& _graphicsIndex, uint32_t& _transferIndex, uint32_t& _presentIndex)
 {
 	uint32_t supportedExtensionsCount;
 	std::vector<VkExtensionProperties> supportedExtensions;
@@ -333,7 +337,7 @@ uint32_t Renderer::ChooseSuitableDevice(std::vector<VkPhysicalDevice> _devices, 
 }
 
 // Returns the index of the first queue with desired properties
-uint32_t Renderer::GetQueueFamilyIndex(std::vector<VkQueueFamilyProperties> _families, VkQueueFlags _flag)
+uint32_t skel::Renderer::GetQueueFamilyIndex(std::vector<VkQueueFamilyProperties> _families, VkQueueFlags _flag)
 {
 	uint32_t bestFit = UINT32_MAX;
 	for (uint32_t i = 0; i < (uint32_t)_families.size(); i++)
@@ -358,7 +362,7 @@ uint32_t Renderer::GetQueueFamilyIndex(std::vector<VkQueueFamilyProperties> _fam
 }
 
 // Returns the index of the first queue that supports the surface -- Queries for WSI support
-int Renderer::GetPresentFamilyIndex(std::vector<VkQueueFamilyProperties> qProps, VkPhysicalDevice d)
+int skel::Renderer::GetPresentFamilyIndex(std::vector<VkQueueFamilyProperties> qProps, VkPhysicalDevice d)
 {
 	uint32_t tmpQueueProp = 0;
 	for (const auto& queueProp : qProps)
@@ -376,7 +380,7 @@ int Renderer::GetPresentFamilyIndex(std::vector<VkQueueFamilyProperties> qProps,
 }
 
 // Returns the device's supported image and presentation information
-Renderer::SurfaceProperties Renderer::GetSurfaceProperties(VkPhysicalDevice _device)
+skel::Renderer::SurfaceProperties skel::Renderer::GetSurfaceProperties(VkPhysicalDevice _device)
 {
 	SurfaceProperties properties;
 
@@ -396,7 +400,7 @@ Renderer::SurfaceProperties Renderer::GetSurfaceProperties(VkPhysicalDevice _dev
 }
 
 // Creates a set of semaphores and a fence for every frame
-void Renderer::CreateSyncObjects()
+void skel::Renderer::CreateSyncObjects()
 {
 	imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
 	renderCompleteSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
@@ -420,14 +424,14 @@ void Renderer::CreateSyncObjects()
 }
 
 // Create the basic command pool for rendering
-void Renderer::CreateCommandPools()
+void skel::Renderer::CreateCommandPools()
 {
 	graphicsCommandPoolIndex = device->CreateCommandPool(device->queueFamilyIndices.graphics, 0);
 	device->graphicsCommandPoolIndex = graphicsCommandPoolIndex;
 }
 
 // Creates a swapchain and its images as rendering canvases
-void Renderer::CreateSwapchain()
+void skel::Renderer::CreateSwapchain()
 {
 	SurfaceProperties properties = GetSurfaceProperties(device->physicalDevice);
 	VkSurfaceFormatKHR format;
@@ -487,7 +491,7 @@ void Renderer::CreateSwapchain()
 }
 
 // Finds a surface with ideal format, present mode, and extent properties
-void Renderer::GetIdealSurfaceProperties(SurfaceProperties _properties, VkSurfaceFormatKHR& _format, VkPresentModeKHR& _presentMode, VkExtent2D& _extent)
+void skel::Renderer::GetIdealSurfaceProperties(SurfaceProperties _properties, VkSurfaceFormatKHR& _format, VkPresentModeKHR& _presentMode, VkExtent2D& _extent)
 {
 	// Search for SRGB and 32 bit color capabilities
 	_format = _properties.formats[0];
@@ -529,7 +533,7 @@ void Renderer::GetIdealSurfaceProperties(SurfaceProperties _properties, VkSurfac
 }
 
 // Creates a compact image view object
-VkImageView Renderer::CreateImageView(VulkanDevice* _device, VkImage _image, VkFormat _format, VkImageAspectFlags _aspectFlags)
+VkImageView skel::Renderer::CreateImageView(VulkanDevice* _device, VkImage _image, VkFormat _format, VkImageAspectFlags _aspectFlags)
 {
 	VkImageViewCreateInfo viewInfo = {};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -552,7 +556,7 @@ VkImageView Renderer::CreateImageView(VulkanDevice* _device, VkImage _image, VkF
 }
 
 // Specify what types of attachments will be accessed by the graphics pipeline
-void Renderer::CreateRenderPass()
+void skel::Renderer::CreateRenderPass()
 {
 	// Describes the swapchain images' color
 	VkAttachmentDescription colorAttachment = {};
@@ -617,7 +621,7 @@ void Renderer::CreateRenderPass()
 }
 
 // Returns the first format of the desired properties supported by the GPU
-VkFormat Renderer::FindSupportedFormat(const std::vector<VkFormat>& _candidates, VkImageTiling _tiling, VkFormatFeatureFlags _features)
+VkFormat skel::Renderer::FindSupportedFormat(const std::vector<VkFormat>& _candidates, VkImageTiling _tiling, VkFormatFeatureFlags _features)
 {
 	for (VkFormat format : _candidates)
 	{
@@ -633,7 +637,7 @@ VkFormat Renderer::FindSupportedFormat(const std::vector<VkFormat>& _candidates,
 }
 
 // Binds shader uniforms
-void Renderer::CreatePipelineLayout(VkPipelineLayout& _pipelineLayout, VkDescriptorSetLayout* _shaderLayouts, uint32_t _count /*= 1*/)
+void skel::Renderer::CreatePipelineLayout(VkPipelineLayout& _pipelineLayout, VkDescriptorSetLayout* _shaderLayouts, uint32_t _count /*= 1*/)
 {
 	VkPipelineLayoutCreateInfo createInfo =
 		skel::initializers::PipelineLayoutCreateInfo(
@@ -648,7 +652,7 @@ void Renderer::CreatePipelineLayout(VkPipelineLayout& _pipelineLayout, VkDescrip
 }
 
 // Define the properties for each stage of the graphics pipeline
-void Renderer::CreateGraphicsPipeline(const char* _vertShaderDir, const char* _fragShaderDir, const VkPipelineLayout& _pipelineLayout, VkPipeline& _pipeline)
+void skel::Renderer::CreateGraphicsPipeline(const char* _vertShaderDir, const char* _fragShaderDir, const VkPipelineLayout& _pipelineLayout, VkPipeline& _pipeline)
 {
 // ===== Viewport =====
 	VkViewport viewport;
@@ -734,7 +738,7 @@ void Renderer::CreateGraphicsPipeline(const char* _vertShaderDir, const char* _f
 // ===== Pipeline Creation =====
 	VkGraphicsPipelineCreateInfo pipelineCreateInfo = 
 		skel::initializers::GraphicsPipelineCreateInfo(
-			pipelineLayout,
+			pipelineLayouts[0],
 			renderpass
 		);
 
@@ -783,7 +787,7 @@ void Renderer::CreateGraphicsPipeline(const char* _vertShaderDir, const char* _f
 }
 
 // Create a pipeline usable object for shader code
-VkShaderModule Renderer::CreateShaderModule(const std::vector<char> _code)
+VkShaderModule skel::Renderer::CreateShaderModule(const std::vector<char> _code)
 {
 	VkShaderModuleCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -800,7 +804,7 @@ VkShaderModule Renderer::CreateShaderModule(const std::vector<char> _code)
 }
 
 // Creates an image and view for the depth texture
-void Renderer::CreateDepthResources()
+void skel::Renderer::CreateDepthResources()
 {
 	VkFormat depthFormat = FindDepthFormat();
 
@@ -819,7 +823,7 @@ void Renderer::CreateDepthResources()
 }
 
 // Specifies the image view(s) to bind to renderpass attachments
-void Renderer::CreateFrameBuffers()
+void skel::Renderer::CreateFrameBuffers()
 {
 	swapchainFrameBuffers.resize((uint32_t)swapchainImages.size());
 
@@ -844,9 +848,12 @@ void Renderer::CreateFrameBuffers()
 }
 
 // Allocates space for, creates, and returns a set of rendering command buffers
-void Renderer::CreateAndBeginCommandBuffers(void (*_externalBindingCommands)(VkCommandBuffer&, Renderer*, void*), void* _context)
+void skel::Renderer::CreateAndBeginCommandBuffers()
 {
-	uint32_t cmdBufferCount = AllocateCommandBuffers(VK_COMMAND_BUFFER_LEVEL_PRIMARY, graphicsCommandPoolIndex, commandBuffers);
+	if (renderableObjects == nullptr)
+		return;
+
+	uint32_t commandCount = AllocateCommandBuffers(VK_COMMAND_BUFFER_LEVEL_PRIMARY, graphicsCommandPoolIndex, commandBuffers);
 
 	std::array<VkClearValue, 2> clearValues;
 	clearValues[0].color = { 0.02f, 0.025f, 0.03f, 1.0f };
@@ -865,12 +872,7 @@ void Renderer::CreateAndBeginCommandBuffers(void (*_externalBindingCommands)(VkC
 	renderPassBeginInfo.clearValueCount = (uint32_t)clearValues.size();
 	renderPassBeginInfo.pClearValues = clearValues.data();
 
-	if (_externalBindingCommands)
-		ArbitraryCommandBufferBinding = _externalBindingCommands;
-	if (_context)
-		ArbitraryCommandBufferBindingData = _context;
-
-	for (uint32_t i = 0; i < cmdBufferCount; i++)
+	for (uint32_t i = 0; i < commandCount; i++)
 	{
 		// Begin recording a command
 		CheckResultCritical(
@@ -881,8 +883,18 @@ void Renderer::CreateAndBeginCommandBuffers(void (*_externalBindingCommands)(VkC
 		renderPassBeginInfo.framebuffer = swapchainFrameBuffers[i];
 		vkCmdBeginRenderPass(commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		if (ArbitraryCommandBufferBinding)
-			ArbitraryCommandBufferBinding(commandBuffers[i], this, ArbitraryCommandBufferBindingData);
+		//for (uint32_t j = 0; j < static_cast<uint32_t>(pipelines.size()); j++)
+		for (uint32_t j = 0; j < 1; j++)
+		{
+			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[j]);
+
+			std::printf("%d\n", (*renderableObjects).size());
+
+			for (auto& obj : *renderableObjects)
+			{
+				obj->Draw(commandBuffers[i], pipelineLayouts[j]);
+			}
+		}
 
 		// Complete the recording
 		EndCommandBuffer(commandBuffers[i]);
@@ -890,7 +902,7 @@ void Renderer::CreateAndBeginCommandBuffers(void (*_externalBindingCommands)(VkC
 }
 
 // Allocate memory for command recording
-uint32_t Renderer::AllocateCommandBuffers(VkCommandBufferLevel _level, uint32_t _commandPoolIndex, std::vector<VkCommandBuffer>& _buffers)
+uint32_t skel::Renderer::AllocateCommandBuffers(VkCommandBufferLevel _level, uint32_t _commandPoolIndex, std::vector<VkCommandBuffer>& _buffers)
 {
 	uint32_t size = (uint32_t)swapchainFrameBuffers.size();
 	_buffers.resize(size);
@@ -909,7 +921,7 @@ uint32_t Renderer::AllocateCommandBuffers(VkCommandBufferLevel _level, uint32_t 
 	return size;
 }
 
-void Renderer::EndCommandBuffer(VkCommandBuffer& _buffer)
+void skel::Renderer::EndCommandBuffer(VkCommandBuffer& _buffer)
 {
 	vkCmdEndRenderPass(_buffer);
 
@@ -924,7 +936,7 @@ void Renderer::EndCommandBuffer(VkCommandBuffer& _buffer)
 // ==============================================
 
 // Returns the depth texture's image format
-VkFormat Renderer::FindDepthFormat()
+VkFormat skel::Renderer::FindDepthFormat()
 {
 	return FindSupportedFormat(
 		{ VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
@@ -934,7 +946,7 @@ VkFormat Renderer::FindDepthFormat()
 }
 
 // Loads a file as binary -- Returns a character vector
-std::vector<char> Renderer::LoadFile(const char* _directory)
+std::vector<char> skel::Renderer::LoadFile(const char* _directory)
 {
 	std::ifstream stream;
 	stream.open(_directory, std::ios::ate | std::ios::binary);
