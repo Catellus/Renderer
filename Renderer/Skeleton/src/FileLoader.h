@@ -130,9 +130,9 @@ inline void LoadTextureToImage(VulkanDevice* _device, const std::string _directo
 }
 
 // Creates an image, imageView, and sampler
-inline void CreateTexture(VulkanDevice* _device, const std::string _dir, VkImage& _image, VkDeviceMemory& _imageMemory, VkImageView& _imageView, VkSampler& _imageSampler)
+inline void CreateTexture(VulkanDevice* _device, const char* _fileName, VkImage& _image, VkDeviceMemory& _imageMemory, VkImageView& _imageView, VkSampler& _imageSampler)
 {
-	LoadTextureToImage(_device, _dir, _image, _imageMemory);
+	LoadTextureToImage(_device, std::string(texturePrefix) + _fileName, _image, _imageMemory);
 	skel::CreateTextureImageView(_device, _image, _imageView);
 	skel::CreateTextureSampler(_device, _imageSampler);
 }

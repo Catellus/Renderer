@@ -82,14 +82,18 @@ public:
 		}
 	}
 
+	// Binds a texture to the shader & loads the image
+	// _directory is from the base texture resource folder
 	void AttachTexture(const char* _directory)
 	{
 		TextureComponent* texture = new TextureComponent();
 		shader.textures.push_back(texture);
 
-		//CreateTexture(device, _directory, texture->image, texture->memory, texture->view, texture->sampler);
+		CreateTexture(device, _directory, texture->image, texture->memory, texture->view, texture->sampler);
 	}
 
+	// Binds a buffer to the shader & allocates memory for it
+	// _size is in bytes
 	void AttachBuffer(VkDeviceSize _size)
 	{
 		BufferComponent* component = new BufferComponent();

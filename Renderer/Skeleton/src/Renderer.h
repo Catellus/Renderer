@@ -42,7 +42,8 @@ public:
 		}
 	};
 
-	struct PipelineInformation {
+	struct PipelineInformation
+	{
 		VkRenderPass renderPass;
 		VkPipelineLayout layout;
 		VkPipeline pipeline;
@@ -58,14 +59,6 @@ public:
 	std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 	const char** glfwRequiredExtentions;
 	uint32_t glfwRequiredExtentionsCount;
-
-	//skel::shaders::ShaderDescriptorInformation unlitShaderDescriptor;
-	const char* unlitVertShaderDir = ".\\res\\shaders\\unlit_vert.spv";
-	const char* unlitFragShaderDir = ".\\res\\shaders\\unlit_frag.spv";
-
-	//skel::shaders::ShaderDescriptorInformation pbrShaderDescriptor;
-	const char* pbrVertShaderDir = ".\\res\\shaders\\PBR_vert.spv";
-	const char* pbrFragShaderDir = ".\\res\\shaders\\PBR_frag.spv";
 
 	std::vector<std::vector<Object*>*>* renderableObjects;
 

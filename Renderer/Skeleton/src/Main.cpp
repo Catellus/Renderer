@@ -10,24 +10,32 @@
 class Application : public skel::SkeletonApplication
 {
 private:
+	VulkanDevice* device;
 	std::vector<std::vector<Object*>*> renderableObjects;
 	std::vector<Object*> bulbs;
 	std::vector<Object*> subjects;
 
 	skel::lights::ShaderLights finalLights;
 
+	const char* albedoTextureDir    = "TestTextures\\White_albedo.png";
+	const char* normalTextureDir    = "TestTextures\\EggCartonFoam_normal.png";
+	const char* metallicTextureDir  = "TestTextures\\Black_metallic.png";
+	const char* roughnessTextureDir = "TestTextures\\Black_roughness.png";
+	const char* aoTextureDir        = "TestTextures\\Black_ao.png";
+
 protected:
 	void ChildInitialize()
 	{
+		device = renderer->device;
+
 		bulbs.resize(4);
 		subjects.resize(4);
 
 		BindShaderDescriptors();
 
 		#pragma region LightInfo
-		glm::vec3 directionalColor = { 0.0f, 0.0f, 0.0f };
+		glm::vec3 directionalColor = { 1.0f, 0.0f, 0.0f };
 
-		float toUnit = 1.0f / 255.0f;
 		glm::vec3 trPointColor = { 1.0f, 1.0f, 1.0f };
 		glm::vec3 tlPointColor = { 0.0f, 1.0f, 1.0f };
 		glm::vec3 blPointColor = { 1.0f, 0.0f, 1.0f };
@@ -38,7 +46,7 @@ protected:
 
 		// Define lighting
 		// Directional light
-		finalLights.directionalLight.color = directionalColor * 0.f;
+		finalLights.directionalLight.color = directionalColor * 1.f;
 		finalLights.directionalLight.direction = { 0.0f, -1.0f, 0.1f };
 		// Point lights
 		finalLights.pointLights[0] = { trPointColor * 2.0f, {  1.0f,  1.0f, 2.0f }, { 1.0f, 0.35f, 0.44f } };
@@ -46,12 +54,12 @@ protected:
 		finalLights.pointLights[2] = { blPointColor * 2.0f, { -1.0f, -1.0f, 2.0f }, { 1.0f, 0.35f, 0.44f } };
 		finalLights.pointLights[3] = { brPointColor * 2.0f, {  1.0f, -1.0f, 2.0f }, { 1.0f, 0.35f, 0.44f } };
 		// Spot lights
-		finalLights.spotLights[0].color = spotlightColor1 * 5.0f;
+		finalLights.spotLights[0].color = spotlightColor1 * 0.f;
 		finalLights.spotLights[0].CLQ = { 1.0f, 0.35f, 0.44f };
 		finalLights.spotLights[0].cutOff = glm::cos(glm::radians(1.0f));
 		finalLights.spotLights[0].outerCutOff = glm::cos(glm::radians(7.0f));
 
-		finalLights.spotLights[1].color = spotlightColor2;
+		finalLights.spotLights[1].color = spotlightColor2 * 0.f;
 		finalLights.spotLights[1].CLQ = { 1.0f, 0.35f, 0.44f };
 		finalLights.spotLights[1].cutOff = glm::cos(glm::radians(2.0f));
 		finalLights.spotLights[1].outerCutOff = glm::cos(glm::radians(3.0f));
@@ -61,13 +69,13 @@ protected:
 		uint32_t index = 0;
 		for (auto& object : bulbs)
 		{
-			object = new Object(renderer->device, skel::shaders::ShaderTypes::Unlit, ".\\res\\models\\TestShapes\\SphereSmooth.obj");
+			object = new Object(device, skel::shaders::ShaderTypes::Unlit, ".\\res\\models\\TestShapes\\SphereSmooth.obj");
 			object->AttachBuffer(sizeof(glm::vec3));
 			VkDeviceMemory* bulbColorMemory = &object->shader.buffers[1]->memory;
-			renderer->shaderDescriptors[0]->CreateDescriptorSets(renderer->device->logicalDevice, object->shader);
+			renderer->shaderDescriptors[0]->CreateDescriptorSets(device->logicalDevice, object->shader);
 			object->transform.position = finalLights.pointLights[index].position;
 			object->transform.scale *= 0.05f;
-			renderer->device->CopyDataToBufferMemory(&finalLights.pointLights[index].color, sizeof(glm::vec3), *bulbColorMemory);
+			device->CopyDataToBufferMemory(&finalLights.pointLights[index].color, sizeof(glm::vec3), *bulbColorMemory);
 
 			index++;
 		}
@@ -89,26 +97,26 @@ protected:
 			},
 			4
 			);
-		//renderer->AddShader(
-		//	"PBR",
-		//	{
-		//		// MVP matrices
-		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
-		//		// Lights info
-		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
-		//		// Albedo map
-		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2),
-		//		// Normal map
-		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3),
-		//		// Metallic
-		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 4),
-		//		// Roughness
-		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 5),
-		//		// AO
-		//		skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 6),
-		//	},
-		//	4
-		//	);
+		renderer->AddShader(
+			"PBR",
+			{
+				// MVP matrices
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0),
+				// Lights info
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_FRAGMENT_BIT, 1),
+				// Albedo map
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 2),
+				// Normal map
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 3),
+				// Metallic
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 4),
+				// Roughness
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 5),
+				// AO
+				skel::initializers::DescriptorSetLyoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 6),
+			},
+			4
+			);
 	}
 
 	void MainLoopCore()
@@ -125,35 +133,23 @@ protected:
 			addedSubjects = true;
 
 			uint32_t index = 0;
-			glm::vec3 color = { 0.0f, 0.0f, 0.0f };
 
 			for (auto& object : subjects)
 			{
-				object = new Object(renderer->device, skel::shaders::ShaderTypes::Unlit, ".\\res\\models\\TestShapes\\Cube.obj");
-				object->AttachBuffer(sizeof(glm::vec3));
-				VkDeviceMemory* colorMemory = &object->shader.buffers[1]->memory;
-				renderer->shaderDescriptors[0]->CreateDescriptorSets(renderer->device->logicalDevice, object->shader);
+				object = new Object(device, skel::shaders::ShaderTypes::Opaque, ".\\res\\models\\TestShapes\\Cube.obj");
+				object->AttachBuffer(sizeof(finalLights));
+				VkDeviceMemory* lightsMemory = &object->shader.buffers[1]->memory;
+				object->AttachTexture(albedoTextureDir);
+				object->AttachTexture(normalTextureDir);
+				object->AttachTexture(metallicTextureDir);
+				object->AttachTexture(roughnessTextureDir);
+				object->AttachTexture(aoTextureDir);
+				renderer->shaderDescriptors[1]->CreateDescriptorSets(device->logicalDevice, object->shader);
 
-				switch (index)
-				{
-				case 0:
-					object->transform.position = { 1.0f, 1.0f, 0.0f };
-					break;
-				case 1:
-					object->transform.position = { 1.0f, -1.0f, 0.0f };
-					color = {0.0f, 0.0f, 1.0f};
-					break;
-				case 2:
-					object->transform.position = { -1.0f, -1.0f, 0.0f };
-					color = {0.0f, 1.0f, 0.0f};
-					break;
-				case 3:
-					object->transform.position = { -1.0f, 1.0f, 0.0f };
-					color = {1.0f, 0.0f, 0.0f};
-					break;
-				}
+				object->transform.position = {index & 1 ? 1.0f : -1.0f, index & 2 ? 1.0f : -1.0f, 0.0f};
+				object->transform.scale *= 0.99f;
 
-				renderer->device->CopyDataToBufferMemory(&color, sizeof(glm::vec3), *colorMemory);
+				device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), *lightsMemory);
 				index++;
 			}
 
@@ -181,6 +177,7 @@ protected:
 		{
 			for (auto& object : subjects)
 			{
+				device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), object->shader.buffers[1]->memory);
 				object->UpdateMVPBuffer(cam->cameraPosition, cam->projection, cam->view);
 			}
 		}

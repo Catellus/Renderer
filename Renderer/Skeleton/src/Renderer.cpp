@@ -83,10 +83,17 @@ void skel::Renderer::CreateRenderer()
 	CreateSwapchain();
 	CreateRenderPass();
 
+	std::string shaderDirectory = std::string(shaderPrefix);
+
 	for (uint32_t i = 0; i < static_cast<uint32_t>(shaderDescriptors.size()); i++)
 	{
 		CreatePipelineLayout(pipelineLayouts[i], &shaderDescriptors[i]->descriptorSetLayout);
-		CreateGraphicsPipeline(shaderDescriptors[i]->vertName.c_str(), shaderDescriptors[i]->fragName.c_str(), pipelineLayouts[i], pipelines[i]);
+		CreateGraphicsPipeline(
+			(shaderDirectory + shaderDescriptors[i]->shaderName + "_vert.spv").c_str(),
+			(shaderDirectory + shaderDescriptors[i]->shaderName + "_frag.spv").c_str(),
+			pipelineLayouts[i],
+			pipelines[i]
+			);
 	}
 
 	CreateDepthResources();
@@ -104,8 +111,11 @@ void skel::Renderer::CleanupRenderer()
 	for (const auto& f : swapchainFrameBuffers)
 		vkDestroyFramebuffer(device->logicalDevice, f, nullptr);
 
-	vkDestroyPipeline(device->logicalDevice, pipelines[0], nullptr);
-	vkDestroyPipelineLayout(device->logicalDevice, pipelineLayouts[0], nullptr);
+	for (uint32_t i = 0; i < static_cast<uint32_t>(pipelines.size()); i++)
+	{
+		vkDestroyPipeline(device->logicalDevice, pipelines[i], nullptr);
+		vkDestroyPipelineLayout(device->logicalDevice, pipelineLayouts[i], nullptr);
+	}
 	vkDestroyRenderPass(device->logicalDevice, renderpass, nullptr);
 
 	for (const auto& v : swapchainImageViews)
@@ -121,7 +131,14 @@ void skel::Renderer::RenderFrame()
 
 	// Wait for and retrieve the next frame for rendering
 	vkWaitForFences(device->logicalDevice, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
-	VkResult result = vkAcquireNextImageKHR(device->logicalDevice, swapchain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+	VkResult result = vkAcquireNextImageKHR(
+		device->logicalDevice,
+		swapchain,
+		UINT64_MAX,
+		imageAvailableSemaphores[currentFrame],
+		VK_NULL_HANDLE,
+		&imageIndex
+		);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
 	{
@@ -252,7 +269,12 @@ void skel::Renderer::CreateVulkanDevice()
 }
 
 // Determines the suitability of physical devices and selects the first suitable
-uint32_t skel::Renderer::ChooseSuitableDevice(std::vector<VkPhysicalDevice> _devices, uint32_t& _graphicsIndex, uint32_t& _transferIndex, uint32_t& _presentIndex)
+uint32_t skel::Renderer::ChooseSuitableDevice(
+	std::vector<VkPhysicalDevice> _devices,
+	uint32_t& _graphicsIndex,
+	uint32_t& _transferIndex,
+	uint32_t& _presentIndex
+	)
 {
 	uint32_t supportedExtensionsCount;
 	std::vector<VkExtensionProperties> supportedExtensions;
@@ -431,7 +453,7 @@ void skel::Renderer::CreateSwapchain()
 			imageCount
 		);
 
-	// TODO : Use only exclusive sharing & handle handoffs manually (using pipeline barriers)
+	// TODO : Use only exclusive sharing & handle hand-offs manually (using pipeline barriers)
 	if (device->queueFamilyIndices.graphics == device->queueFamilyIndices.present)
 	{
 		createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -467,7 +489,12 @@ void skel::Renderer::CreateSwapchain()
 }
 
 // Finds a surface with ideal format, present mode, and extent properties
-void skel::Renderer::GetIdealSurfaceProperties(SurfaceProperties _properties, VkSurfaceFormatKHR& _format, VkPresentModeKHR& _presentMode, VkExtent2D& _extent)
+void skel::Renderer::GetIdealSurfaceProperties(
+	SurfaceProperties _properties,
+	VkSurfaceFormatKHR& _format,
+	VkPresentModeKHR& _presentMode,
+	VkExtent2D& _extent
+	)
 {
 	// Search for SRGB and 32 bit color capabilities
 	_format = _properties.formats[0];
@@ -628,7 +655,12 @@ void skel::Renderer::CreatePipelineLayout(VkPipelineLayout& _pipelineLayout, VkD
 }
 
 // Define the properties for each stage of the graphics pipeline
-void skel::Renderer::CreateGraphicsPipeline(const char* _vertShaderDir, const char* _fragShaderDir, const VkPipelineLayout& _pipelineLayout, VkPipeline& _pipeline)
+void skel::Renderer::CreateGraphicsPipeline(
+	const char* _vertShaderDir,
+	const char* _fragShaderDir,
+	const VkPipelineLayout& _pipelineLayout,
+	VkPipeline& _pipeline
+	)
 {
 // ===== Viewport =====
 	VkViewport viewport = {};
@@ -875,13 +907,13 @@ void skel::Renderer::RecordRenderingCommandBuffers(std::vector<std::vector<Objec
 		//for (uint32_t j = 0; j < static_cast<uint32_t>(pipelines.size()); j++)
 		for (uint32_t j = 0; j < static_cast<uint32_t>(renderableObjects->size()); j++)
 		{
-			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[0]);
+			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[j]);
 
 			std::vector<Object*>* objectGeneration = (*renderableObjects)[j];
 
 			for (auto& obj : *objectGeneration)
 			{
-				obj->Draw(commandBuffers[i], pipelineLayouts[0]);
+				obj->Draw(commandBuffers[i], pipelineLayouts[j]);
 			}
 		}
 
@@ -958,9 +990,7 @@ void skel::Renderer::AddShader(
 	uint32_t _objectCount
 	)
 {
-	std::string name = std::string(shaderPrefix) + std::string(_name);
-
-	shaderDescriptors.push_back(new skel::shaders::ShaderDescriptorInformation(name + "_vert.spv", name + "_frag.spv"));
+	shaderDescriptors.push_back(new skel::shaders::ShaderDescriptorInformation(_name));
 	skel::shaders::ShaderDescriptorInformation& newShader = *shaderDescriptors[static_cast<uint32_t>(shaderDescriptors.size()) - 1];
 	newShader.CreateLayoutBindingsAndPool(device->logicalDevice, _bindings, _objectCount);
 }

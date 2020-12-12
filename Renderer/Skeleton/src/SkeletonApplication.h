@@ -15,7 +15,8 @@ class SkeletonApplication
 // STRUCTS
 // ==============================================
 protected:
-	struct ApplicationTimeInformation {
+	struct ApplicationTimeInformation
+	{
 		float totalTime = 0;
 		float deltaTime = 0;
 		uint32_t frameNumber = 0;

@@ -111,19 +111,16 @@ namespace skel
 		// Handles the descriptor information for the render pipeline about opaque shaders
 		struct ShaderDescriptorInformation
 		{
-// TODO : Find a way to store names in const char* -- The pointer gets cleared when using string.c_str()
-			std::string vertName;
-			std::string fragName;
+			const char* shaderName;
 			std::vector<VkDescriptorSetLayoutBinding> bindings;
 			VkDescriptorSetLayout descriptorSetLayout;
 			VkDescriptorPool descriptorPool;
 			uint32_t poolSize = 1;
 			uint32_t boundObjects = 0;
 
-			ShaderDescriptorInformation(std::string _vn, std::string _fn)
+			ShaderDescriptorInformation(const char* _name)
 			{
-				vertName = _vn;
-				fragName = _fn;
+				shaderName = _name;
 			}
 
 			void CreateLayoutBindingsAndPool(
