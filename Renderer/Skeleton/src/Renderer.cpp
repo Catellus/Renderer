@@ -904,16 +904,19 @@ void skel::Renderer::RecordRenderingCommandBuffers(std::vector<std::vector<Objec
 		renderPassBeginInfo.framebuffer = swapchainFrameBuffers[i];
 		vkCmdBeginRenderPass(commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		//for (uint32_t j = 0; j < static_cast<uint32_t>(pipelines.size()); j++)
 		for (uint32_t j = 0; j < static_cast<uint32_t>(renderableObjects->size()); j++)
 		{
-			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[j]);
-
 			std::vector<Object*>* objectGeneration = (*renderableObjects)[j];
+			if (static_cast<uint32_t>(objectGeneration->size()) == 0)
+				continue;
+
+			uint32_t generationShaderType = (*objectGeneration)[0]->shader.type;
+
+			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[generationShaderType]);
 
 			for (auto& obj : *objectGeneration)
 			{
-				obj->Draw(commandBuffers[i], pipelineLayouts[j]);
+				obj->Draw(commandBuffers[i], pipelineLayouts[generationShaderType]);
 			}
 		}
 

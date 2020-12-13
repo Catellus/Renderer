@@ -72,7 +72,7 @@ protected:
 			object = new Object(device, skel::shaders::ShaderTypes::Unlit, ".\\res\\models\\TestShapes\\SphereSmooth.obj");
 			object->AttachBuffer(sizeof(glm::vec3));
 			VkDeviceMemory* bulbColorMemory = &object->shader.buffers[1]->memory;
-			renderer->shaderDescriptors[0]->CreateDescriptorSets(device->logicalDevice, object->shader);
+			renderer->shaderDescriptors[object->shader.type]->CreateDescriptorSets(device->logicalDevice, object->shader);
 			object->transform.position = finalLights.pointLights[index].position;
 			object->transform.scale *= 0.05f;
 			device->CopyDataToBufferMemory(&finalLights.pointLights[index].color, sizeof(glm::vec3), *bulbColorMemory);
@@ -137,6 +137,9 @@ protected:
 			for (auto& object : subjects)
 			{
 				object = new Object(device, skel::shaders::ShaderTypes::Opaque, ".\\res\\models\\TestShapes\\Cube.obj");
+				//object->AttachBuffer(sizeof(glm::vec3));
+				//VkDeviceMemory* colorMemory = &object->shader.buffers[1]->memory;
+				//device->CopyDataToBufferMemory(&finalLights.pointLights[index].color, sizeof(glm::vec3), *colorMemory);
 				object->AttachBuffer(sizeof(finalLights));
 				VkDeviceMemory* lightsMemory = &object->shader.buffers[1]->memory;
 				object->AttachTexture(albedoTextureDir);
@@ -144,12 +147,13 @@ protected:
 				object->AttachTexture(metallicTextureDir);
 				object->AttachTexture(roughnessTextureDir);
 				object->AttachTexture(aoTextureDir);
-				renderer->shaderDescriptors[1]->CreateDescriptorSets(device->logicalDevice, object->shader);
+				device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), *lightsMemory);
+
+				renderer->shaderDescriptors[object->shader.type]->CreateDescriptorSets(device->logicalDevice, object->shader);
 
 				object->transform.position = {index & 1 ? 1.0f : -1.0f, index & 2 ? 1.0f : -1.0f, 0.0f};
 				object->transform.scale *= 0.99f;
 
-				device->CopyDataToBufferMemory(&finalLights, sizeof(finalLights), *lightsMemory);
 				index++;
 			}
 

@@ -62,6 +62,8 @@ public:
 		const char* _modelDirectory = nullptr
 		) : device(_device)
 	{
+		shader.type = _shaderType;
+
 		// Guarantee the MVP matrices will be buffer 0
 		AttachBuffer(sizeof(skel::MvpInfo));
 		mvp.model = glm::mat4(1.0f);

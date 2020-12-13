@@ -16,8 +16,8 @@ namespace skel
 	{
 		enum ShaderTypes
 		{
-			Opaque = 0,
-			Unlit = 1
+			Unlit = 0,
+			Opaque = 1
 		};
 	}
 }
