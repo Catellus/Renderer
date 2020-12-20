@@ -6,11 +6,12 @@
 
 #include "Common.h"
 #include "VulkanDevice.h"
+#include "Initializers.h"
 #include "Object.h"
 #include "Shaders.h"
 #include "Mesh.h"
 #include "Texture.h"
-#include "Initializers.h"
+#include "Camera.h"
 
 #define CheckResultCritical(x, message)			\
 	VkResult vkFunctionResult = x;				\
@@ -30,7 +31,7 @@ public:
 // Member structs
 // ------------------------------------------- //
 
-	// The properties of the surface created by GLFW
+	// The properties of the surface created by SDL
 	struct SurfaceProperties
 	{
 		VkSurfaceCapabilitiesKHR capabilities;
@@ -58,20 +59,25 @@ public:
 	std::vector<const char*> instanceLayers = { "VK_LAYER_KHRONOS_validation" };
 	std::vector<const char*> instanceExtensions = {};
 	std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
-	const char** glfwRequiredExtentions;
-	uint32_t glfwRequiredExtentionsCount;
 
 	std::vector<std::vector<Object*>*>* renderableObjects;
+
+// ------------------------------------------- //
+// Listeners
+// ------------------------------------------- //
+
+	std::vector<void(*)(SDL_Window*)> resizeListeners;
 
 // ------------------------------------------- //
 // Renderer
 // ------------------------------------------- //
 
-	GLFWwindow* window;
+	SDL_Window* window;
 	bool windowResized;
+	Camera* cam;
 
 	VkInstance instance;
-	VkSurfaceKHR surface;
+	VkSurfaceKHR surface = NULL;
 	VulkanDevice* device;
 	uint32_t graphicsCommandPoolIndex;
 
@@ -86,7 +92,7 @@ public:
 	VkImageView depthImageView;
 	VkDeviceMemory depthImageMemory;
 
-	std::vector<skel::shaders::ShaderDescriptorInformation*> shaderDescriptors;
+	std::vector<skel::ShaderDescriptorInformation*> shaderDescriptors;
 	VkRenderPass renderpass;
 	std::vector<VkPipelineLayout> pipelineLayouts;
 	std::vector<VkPipeline> pipelines;
@@ -102,7 +108,7 @@ public:
 	std::vector<VkCommandBuffer> commandBuffers;
 
 public:
-	Renderer(GLFWwindow*);
+	Renderer(SDL_Window*, Camera*);
 	~Renderer();
 
 	// Creates the render pipeline & components
@@ -121,11 +127,9 @@ public:
 	// Basic initialization
 	// ==========================================
 
-	// Retrieve all extensions GLFW needs
-	void GetGLFWRequiredExtensions();
 	// Creates a Vulkan instance with app information
 	void CreateInstance();
-	// Make GLFW create a surface to present images to
+	// Make SDL create a surface to present images to
 	void CreateSurface();
 	// Selects a physical device and initializes a logical device
 	void CreateVulkanDevice();
@@ -186,5 +190,5 @@ public:
 
 }; // Renderer
 
-} // skel
+} // namespace skel
 

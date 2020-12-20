@@ -11,9 +11,9 @@ class Application : public skel::SkeletonApplication
 {
 private:
 	VulkanDevice* device;
-	std::vector<std::vector<Object*>*> renderableObjects;
-	std::vector<Object*> bulbs;
-	std::vector<Object*> subjects;
+	std::vector<std::vector<skel::Object*>*> renderableObjects;
+	std::vector<skel::Object*> bulbs;
+	std::vector<skel::Object*> subjects;
 
 	skel::lights::ShaderLights finalLights;
 
@@ -69,7 +69,7 @@ protected:
 		uint32_t index = 0;
 		for (auto& object : bulbs)
 		{
-			object = new Object(device, skel::shaders::ShaderTypes::Unlit, ".\\res\\models\\TestShapes\\SphereSmooth.obj");
+			object = new skel::Object(device, skel::ShaderTypes::Unlit, ".\\res\\models\\TestShapes\\SphereSmooth.obj");
 			object->AttachBuffer(sizeof(glm::vec3));
 			VkDeviceMemory* bulbColorMemory = &object->shader.buffers[1]->memory;
 			renderer->shaderDescriptors[object->shader.type]->CreateDescriptorSets(device->logicalDevice, object->shader);
@@ -136,7 +136,7 @@ protected:
 
 			for (auto& object : subjects)
 			{
-				object = new Object(device, skel::shaders::ShaderTypes::Opaque, ".\\res\\models\\TestShapes\\Cube.obj");
+				object = new skel::Object(device, skel::ShaderTypes::Opaque, ".\\res\\models\\TestShapes\\Cube.obj");
 				//object->AttachBuffer(sizeof(glm::vec3));
 				//VkDeviceMemory* colorMemory = &object->shader.buffers[1]->memory;
 				//device->CopyDataToBufferMemory(&finalLights.pointLights[index].color, sizeof(glm::vec3), *colorMemory);
@@ -202,7 +202,7 @@ protected:
 
 };
 
-int main()
+int main(int argc, char** argv)
 {
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 	try

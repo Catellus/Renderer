@@ -2,6 +2,9 @@
 
 #include <string>
 
+#include <sdl/SDL.h>
+#include <sdl/SDL_vulkan.h>
+
 #include "Common.h"
 #include "Renderer.h"
 #include "Camera.h"
@@ -38,10 +41,12 @@ protected:
 // VARIABLES
 // ==============================================
 protected:
+	SDL_Window* window;
+	SDL_Cursor* cursor;
+	bool applicationShouldClose = false;
 	skel::Renderer* renderer;
 
 	skel::Camera* cam;
-	GLFWwindow* window;
 
 // ==============================================
 // FUNCTIONS
@@ -67,34 +72,15 @@ protected:
 // WINDOW =======================================
 // ==============================================
 
+	void WindowResizeListener(SDL_Window* _window);
+
 	// Called when the window is resized
-	static void WindowResizeCallback(GLFWwindow* _window, int _width, int _height)
-	{
-		auto app = reinterpret_cast<SkeletonApplication*>(glfwGetWindowUserPointer(_window));
-		app->renderer->windowResized = true;
-		app->cam->UpdateProjection(_width / (float)_height);
-	}
-	// Called when the mouse is moved within the GLFW window's borders
-	// Adjusts the camera's pitch & yaw
-	static void mouseMovementCallback(GLFWwindow* _window, double _x, double _y)
-	{
-		auto app = reinterpret_cast<SkeletonApplication*>(glfwGetWindowUserPointer(_window));
-
-		static float previousX = (float)_x;
-		static float previousY = (float)_y;
-		float currentX = (float)_x;
-		float currentY = (float)_y;
-
-		app->cam->yaw += (currentX - previousX) * app->mouseSensativity;
-		app->cam->pitch += (previousY - currentY) * app->mouseSensativity;
-		if (app->cam->pitch > 89.0f)
-			app->cam->pitch = 89.0f;
-		if (app->cam->pitch < -89.0f)
-			app->cam->pitch = -89.0f;
-
-		previousX = currentX;
-		previousY = currentY;
-	}
+	//static void WindowResizeCallback(GLFWwindow* _window, int _width, int _height)
+	//{
+	//	auto app = reinterpret_cast<SkeletonApplication*>(glfwGetWindowUserPointer(_window));
+	//	app->renderer->windowResized = true;
+	//	app->cam->UpdateProjection(_width / (float)_height);
+	//}
 
 // INPUT ========================================
 // ==============================================
@@ -107,7 +93,7 @@ private:
 
 	// Sets up the renderer
 	void Initialize();
-	// Initializes GLFW & creates a window
+	// Initializes SDL & creates a window
 	void CreateWindow();
 
 // MAIN LOOP ===================================
@@ -123,5 +109,5 @@ private:
 
 }; // SkeletonApplication
 
-} // namespace
+} // namespace skel
 

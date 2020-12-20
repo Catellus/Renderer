@@ -14,21 +14,20 @@
 
 namespace skel
 {
-	// Matrices for translating objects to clip space
-	struct MvpInfo {
-		alignas(16) glm::mat4 model;
-		alignas(16) glm::mat4 view;
-		alignas(16) glm::mat4 proj;
-		alignas(16) glm::vec3 camPosition;
-	};
+// Matrices for translating objects to clip space
+struct MvpInfo {
+	alignas(16) glm::mat4 model;
+	alignas(16) glm::mat4 view;
+	alignas(16) glm::mat4 proj;
+	alignas(16) glm::vec3 camPosition;
+};
 
-	// Vectors transformed into the object's model matrix
-	struct Transform {
-		glm::vec3 position	= { 0.0f, 0.0f, 0.0f };
-		glm::vec3 rotation	= { 0.0f, 0.0f, 0.0f };
-		glm::vec3 scale		= { 1.0f, 1.0f, 1.0f };
-	};
-}
+// Vectors transformed into the object's model matrix
+struct Transform {
+	glm::vec3 position	= { 0.0f, 0.0f, 0.0f };
+	glm::vec3 rotation	= { 0.0f, 0.0f, 0.0f };
+	glm::vec3 scale		= { 1.0f, 1.0f, 1.0f };
+};
 
 // TODO : Only create each image once
 // TODO : Share BaseShader between objects using the same shader
@@ -49,7 +48,7 @@ private:
 
 public:
 	skel::Transform transform;
-	BaseShader shader;
+	skel::BaseShader shader;
 
 // ==============================================
 // Functions
@@ -58,7 +57,7 @@ public:
 	// Builds the object's mesh and loads its textures
 	Object(
 		VulkanDevice* _device,
-		skel::shaders::ShaderTypes _shaderType,
+		skel::ShaderTypes _shaderType,
 		const char* _modelDirectory = nullptr
 		) : device(_device)
 	{
@@ -139,4 +138,6 @@ public:
 	}
 
 };
+
+} // namespace skel
 

@@ -5,13 +5,13 @@
 #include <string>
 #include <fstream>
 
-skel::Renderer::Renderer(GLFWwindow* _window)
+skel::Renderer::Renderer(SDL_Window* _window, Camera* _cam)
 {
 	pipelineLayouts.resize(2);
 	pipelines.resize(2);
 
 	window = _window;
-	GetGLFWRequiredExtensions();
+	cam = _cam;
 
 	CreateInstance();
 	CreateSurface();
@@ -48,8 +48,8 @@ skel::Renderer::~Renderer()
 	vkDestroySurfaceKHR(instance, surface, nullptr);
 	vkDestroyInstance(instance, nullptr);
 
-	glfwDestroyWindow(window);
-	glfwTerminate();
+	SDL_DestroyWindow(window);
+	SDL_Quit();
 }
 
 // Creates the render pipeline & components
@@ -63,14 +63,24 @@ void skel::Renderer::RecreateRenderer()
 {
 	vkDeviceWaitIdle(device->logicalDevice);
 
+	for (const auto& listener : resizeListeners)
+		listener(window);
+
 	// Don't recreate renderer when minimized
 	int width, height;
-	glfwGetFramebufferSize(window, &width, &height);
+	SDL_GetWindowSize(window, &width, &height);
+
+	// TODO : Find a better way to do this
+	// Make this an observer?
+	cam->UpdateProjection((float)width/(float)height);
+
 	while (width == 0 || height == 0)
 	{
-		glfwGetFramebufferSize(window, &width, &height);
-		glfwWaitEvents();
+		SDL_GetWindowSize(window, &width, &height);
+		while (SDL_WaitEvent(nullptr) == 0) {}
 	}
+
+
 
 	// Destroy all renderer objects
 	CleanupRenderer();
@@ -205,19 +215,28 @@ void skel::Renderer::RenderFrame()
 // Initialization
 // ==============================================
 
-// Retrieve all extensions GLFW needs
-void skel::Renderer::GetGLFWRequiredExtensions()
-{
-	glfwRequiredExtentions = glfwGetRequiredInstanceExtensions(&glfwRequiredExtentionsCount);
-	for (uint32_t i = 0; i < glfwRequiredExtentionsCount; i++)
-	{
-		instanceExtensions.push_back(glfwRequiredExtentions[i]);
-	}
-}
-
 // Creates a Vulkan instance with app information
 void skel::Renderer::CreateInstance()
 {
+	uint32_t count = 0;
+	if (!SDL_Vulkan_GetInstanceExtensions(window, &count, nullptr))
+	{
+		std::printf("SDL error : %s\n", SDL_GetError());
+		throw std::runtime_error("Failed to get number of SDL instance extensions");
+	}
+
+	std::vector<const char*> names(count);
+	if (!SDL_Vulkan_GetInstanceExtensions(window, &count, names.data()))
+	{
+		std::printf("SDL error : %s\n", SDL_GetError());
+		throw std::runtime_error("Failed to get SDL instance extensions");
+	}
+
+	for (const char* extension : names)
+	{
+		instanceExtensions.push_back(extension);
+	}
+
 	VkApplicationInfo appInfo = {};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	appInfo.pApplicationName = "Temp app title";
@@ -237,10 +256,14 @@ void skel::Renderer::CreateInstance()
 	CheckResultCritical(vkCreateInstance(&createInfo, nullptr, &instance), "Failed to create vkInstance");
 }
 
-// Make GLFW create a surface to present images to
+// Make SDL create a surface to present images to
 void skel::Renderer::CreateSurface()
 {
-	glfwCreateWindowSurface(instance, window, nullptr, &surface);
+	if (!SDL_Vulkan_CreateSurface(window, instance, &surface))
+	{
+		std::printf("SDL error: %s", SDL_GetError());
+		throw std::runtime_error("Failed to create surface");
+	}
 }
 
 // Selects a physical device and initializes a logical device
@@ -527,7 +550,7 @@ void skel::Renderer::GetIdealSurfaceProperties(
 	else
 	{
 		int tmpWidth, tmpHeight;
-		glfwGetFramebufferSize(window, &tmpWidth, &tmpHeight);
+		SDL_GetWindowSize(window, &tmpWidth, &tmpHeight);
 		VkExtent2D actual = { (uint32_t)tmpWidth, (uint32_t)tmpHeight };
 		actual.width = glm::clamp(actual.width, _properties.capabilities.minImageExtent.width, _properties.capabilities.maxImageExtent.width);
 		actual.height = glm::clamp(actual.height, _properties.capabilities.minImageExtent.height, _properties.capabilities.maxImageExtent.height);
@@ -993,8 +1016,8 @@ void skel::Renderer::AddShader(
 	uint32_t _objectCount
 	)
 {
-	shaderDescriptors.push_back(new skel::shaders::ShaderDescriptorInformation(_name));
-	skel::shaders::ShaderDescriptorInformation& newShader = *shaderDescriptors[static_cast<uint32_t>(shaderDescriptors.size()) - 1];
+	shaderDescriptors.push_back(new skel::ShaderDescriptorInformation(_name));
+	skel::ShaderDescriptorInformation& newShader = *shaderDescriptors[static_cast<uint32_t>(shaderDescriptors.size()) - 1];
 	newShader.CreateLayoutBindingsAndPool(device->logicalDevice, _bindings, _objectCount);
 }
 
